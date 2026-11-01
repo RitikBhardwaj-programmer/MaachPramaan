@@ -533,7 +533,121 @@ A read-only review of `estimate.py`, `variance.py` and `nonresponse.py` by a sec
 **20.2 Take-all strata add no phase-2 variance to the bootstrap (open).** Section 8.6 says a take-all stratum still adds the phase-2 term when only a subsample of it is verified. Section 8.7 says take-all strata get $\lambda_h = 0$ and add no sampling variance. The code follows 8.7: with $f_h = 1$ the weights never change, and the set of verified units is fixed in every replicate, so the random choice of which take-all units are weighed adds no variance. The two sections disagree about take-all strata that are subsampled for verification. The phase-1 part of the statement in 8.7 is right ($f_h = 1$ means no phase-1 sampling variance). The phase-2 part is not covered.
 - Likely size (inference, not tested): small. About 20 take-all units and about 6 of them verified. Bootstrap SE over empirical SD was 1.03 (v0.2 seeds) and 0.976 (v0.3 seeds) in S1.
 - Options for v0.4: (a) keep the bootstrap, and state in 8.7 that the phase-2 term of take-all strata is left out; (b) resample the verified status inside take-all strata ($m_h - 1$ draws among the verified, rescaled), so the term is included. Option (b) needs a test against a hand-computed phase-2 variance. Choose after the deck, on new seeds, and write the choice here before any run.
+- **Decision (2026-11-01): option (b), specified in section 21.1.**
 - Until then, the proposal limits (section 9.6) state that the interval leaves out the phase-2 variance of take-all units.
+
+---
+
+## 21. Design v0.4: specification before code (2026-11-01)
+
+**Status: draft for owner review. No v0.4 code exists yet.** This section fixes what v0.4 builds, how each part is tested, which seeds are used, and what counts as a pass. It is written before any run. It follows the rule of sections 18 and 19: no statistical change without a written criterion first, and nothing tuned on a seed that was already used. Numbers are simulated; labels [ASSUMPTION] mark placeholders.
+
+**Seeds used so far (never tune on these):** 20261101/2026 (v0.1), 20261102/4417 (v0.2, confirmatory), 20261103/5521 (v0.3 check).
+
+| Part | `pop_seed` | `master_seed` | Run |
+|---|---|---|---|
+| A. Main v0.4 run (S1 to S5: take-all variance, productivity, plausibility checks) | 20261104 | 6609 | 1,000 reps |
+| B. Fay-Herriot test (scenario F) | 20261105 | 7703 | 1,000 reps |
+| C. Rotating panel (scenario S6) | 20261106 | 8815 | 1,000 reps |
+
+**Z0 (no-regression check, runs first).** With every v0.4 feature switched off, `--cal-rule v0.3` on seeds 20261103/5521 (30 reps, S1) must give a `replications.csv` that is byte-identical to `results/v0.3`. This is an identity check on old seeds, not tuning. New features that draw random numbers use separate `SeedSequence` children, so they cannot move the S1 to S5 streams.
+
+### 21.1 Take-all phase-2 variance (closes section 20.2: option b)
+
+**Decision: option (b).** Reason: option (a) leaves a known gap in the interval. Option (b) closes it with a small, testable change. The choice is fixed now and does not depend on the result of any run.
+
+**Rule.** Inside a take-all stratum $h$ ($f_h = 1$, $n'_h$ respondents, $m_h$ verified), each bootstrap replicate also resamples the *verified* units: draw $m_h - 1$ of the $m_h$ verified units with replacement and rescale their phase-2 weights with the Rao–Wu form of section 8.7, using the phase-2 fraction $\lambda_h = \sqrt{1 - m_h / n'_h}$. Phase-1 weights of take-all units stay fixed. If $m_h < 2$, add no term and record the stratum. Other strata are unchanged (the existing bootstrap already carries phase-2 status).
+
+**Expected value of the added term** (the target of the test): $N_h^2\,(1/m_h - 1/n'_h)\, s^2_{e,h}$, the second term of section 8.6 for that stratum.
+
+| # | Criterion | Check |
+|---|---|---|
+| T1 | On a fixed take-all stratum with known $e_i$, the bootstrap variance of the stratum's phase-2 contribution matches the hand formula above within 2% (large $B$, fixed seed). | Unit test, hand-computed |
+| T2 | With $m_h = n'_h$ (all verified) the added term is zero. | Unit test |
+| T3 | S1, part A: AC1 to AC5 hold (coverage 93% to 97%, bias below 1%, bootstrap SE within 10% of the empirical SD, RSE at most 7.5%). Judge them as a replication on a new district. | Run |
+| T4 | Paired diagnostic on the v0.3 seeds (20261103/5521, same samples): report mean bootstrap SE with and without the term. Option (b) stays whatever this shows. | Run, report only |
+
+After T1 to T3 pass, edit section 8.6, 8.7 and the proposal §9.6 (the take-all gap statement). If T3 fails, report it; do not re-tune.
+
+### 21.2 Productivity estimand
+
+**Target:** $P_d = Y_d / A_d$ (t/ha), $Y_d$ the district production (list plus not-on-list), $A_d$ the total water area: frame area plus the not-on-list area estimated from the area frame (section 3.4). The simulation truth is $Y_d / A_d$ with the true areas.
+
+**Estimator:** $\hat P_d = \hat Y_d / \hat A_d$. **Variance and interval:** from the bootstrap. Each replicate re-computes $\hat Y^*_d$ and $\hat A^*_d$ and forms $\hat P^* = \hat Y^* / \hat A^*$, so their covariance enters automatically. The CI uses the same $t$ rule (df $= m_d - H_d$). The linearisation of section 8.8 is the cross-check.
+
+| # | Criterion (S1, part A) |
+|---|---|
+| P1 | Absolute relative bias of $\hat P$ below 1%. |
+| P2 | Bootstrap coverage of $P$ between 93% and 97%. |
+| P3 | Bootstrap SE within 10% of the empirical SD; the linearised SE is reported beside it. |
+| P4 | $\hat P$ is also reported for S2 to S5, with the same honest reading as AC6. |
+
+### 21.3 Event-level data and plausibility checks (section 10)
+
+**Why:** section 10 has five event-level rules, but the simulation produces unit-year totals only. Event rules cannot be tested without events.
+
+**Event table (new, simulated).** One row per harvest event: `event_id`, `unit_id`, `date` inside the reference year, `q_diary`, `q_ver` (empty if not verified), `seed_count`. Construction: split each unit's $y_i$ over `n_events` with Dirichlet(1) shares; $q_{diary}$ uses the unit's $x_i$ with the same shares; $q_{ver}$ uses $y_i$ shares for verified events (rate `verify_prob`). The event sums reproduce $x_i$ and $y_i$ exactly. `seed_count` is a placeholder rule: [ASSUMPTION] survival 0.5, mean harvest weight 0.8 kg, so seed $=y_i / (0.5 \times 0.8\ \mathrm{kg})$ with lognormal noise.
+
+**Module (new, read-only on the sample).** It implements the five checks of section 10 and returns a flag table: `unit_id`, `event_id` or none, `check`, `value`, `threshold`. It never changes a value. The dashboard flag queue reads this table (empty state stays if the table is empty).
+
+**Fault injection (test design).** On a copy, inject at known positions: 2% duplicate events, 2% events scaled ×10, 2% units with seed count below one tenth of what the production needs, 2% diary-vs-verified gaps above 50%.
+
+| # | Criterion |
+|---|---|
+| C1 | Recall at least 90% for duplicates and ×10 events; at least 80% for seed-inconsistent units and gap events. |
+| C2 | On the clean data, the share of units with a yield-outlier flag is at most 5%, and the share of events with any flag is at most 5%. Report each check separately. |
+| C3 | Event sums equal unit totals to 1e-9. |
+| C4 | The input tables have identical hashes before and after the checks (flag, never overwrite). |
+| C5 | Estimating on the injected copy with flagged records excluded moves $\hat Y$ closer to the clean estimate than estimating on the injected copy without exclusion (the sensitivity estimate of section 10). |
+
+C1, C2 and C5 run on 200 replications of S1 data from part A seeds; C3 and C4 on every replication.
+
+### 21.4 Fay-Herriot test (section 11), scenario F
+
+**Population.** Same synthetic district model, with one addition: a block effect on productivity, $\theta_b = \bar\theta (1 + \sigma_b\, u_b)$ with $u_b \sim N(0,1)$, [ASSUMPTION] $\sigma_b = 0.15$ in the primary case. The effect is drawn from a separate `SeedSequence` child, and $\sigma_b = 0$ reproduces the old district. **Blocks:** 10 per district (about 20 sampled units per block at $n = 200$), as in `Config.n_blocks`. A second stress case uses 30 blocks (about 7 units per block).
+
+**Covariates $\mathbf{x}_b$:** log mean frame area, share of assisted units. (Seed supplied per ha is named in section 11 but is not simulated; it is left out and stated.) Both are known for every frame unit. They are correlated with the true block effect only through the model's existing area and assisted structure, so the covariates are informative but not perfect.
+
+**Procedure per replication:** direct block estimates from E3 and their bootstrap variances; GVF smoothing of $\hat\psi_b$; Li–Lahiri adjusted REML for $\hat\sigma_v^2$; shrinkage; ratio benchmarking to the direct district estimate; Prasad–Rao MSE. The code uses `numpy`/`scipy` only; no new dependency.
+
+| # | Criterion (primary case, 10 blocks, simulated) |
+|---|---|
+| F1 | Mean over blocks of MSE(FH) / MSE(direct) at most 0.85. |
+| F2 | Mean coverage of the Prasad–Rao 95% interval between 92% and 97%. |
+| F3 | Benchmarked block totals equal the direct district total to 1e-9. |
+| F4 | Report the share of replications where unadjusted REML gives $\hat\sigma_v^2 = 0$ (the reason for Li–Lahiri). |
+| F5 | No-harm: with $\sigma_b = 0$, the mean MSE ratio is at most 1.05. |
+
+Stress case (30 blocks): report F1 to F4 only. No pass or fail; the proposal states that FH is experimental (section 11).
+
+### 21.5 Rotating panel and composite estimator (section 12), scenario S6
+
+**Population over three years.** Unit productivity persists: $\mathrm{prod}_{it} = \mathrm{base}_i \exp\!\big(s\,(\sqrt{\rho_u}\, z_i + \sqrt{1-\rho_u}\, \varepsilon_{it}) - s^2/2\big)$ with [ASSUMPTION] $\rho_u = 0.6$, plus a district trend of +3% a year [ASSUMPTION]. Area and frame are fixed. Truth $Y_t$ is known for $t = 1, 2, 3$. A sensitivity case uses $\rho_u = 0.3$.
+
+**Samples.** PRN shift as in section 12: $u^{(t)}_i = (u_i + t\,\delta_h) \bmod 1$, $\delta_h = n_h / (3N_h)$. Take-all units stay in every year. The matched share between two consecutive years must be about two thirds.
+
+**Estimator.** Year 1: composite = direct E3. For $t \ge 2$: $\hat Y''_t = (1-K)\hat Y_t + K(\hat Y''_{t-1} + \hat\Delta_t)$. $\hat\Delta_t = \hat Y^{M}_t - \hat Y^{M}_{t-1}$, where $\hat Y^{M}$ is E3 computed on the matched units only, with year-$t$ weights recalibrated to the same $N_h$ and $A_h$ in both years. $K$ is estimated in each replication from the bootstrap replicates (variance-minimising combination of $\hat Y_t$ and $\hat Y''_{t-1} + \hat\Delta_t$), clipped to $[0, 0.8]$. The bootstrap resamples the same selected units in both years.
+
+| # | Criterion (primary case, simulated) |
+|---|---|
+| G1 | Matched share between consecutive years in $[0.63, 0.70]$; no unit is sampled in more than 3 years. |
+| G2 | Year-3 RMSE of the composite / RMSE of the direct estimate at most 0.95 (the gain). |
+| G3 | Year-2 and year-3 ratio at most 1.00 (no harm). |
+| G4 | Composite absolute relative bias below 1.5% in years 2 and 3. |
+| G5 | Composite bootstrap-CI coverage between 93% and 97% in years 2 and 3. |
+| G6 | In the $\rho_u = 0.3$ case, ratio at most 1.00 (no harm). The gain may vanish. |
+
+### 21.6 R cross-check
+
+A second implementation of E3 point estimates and the Rao–Wu bootstrap in R, in a new `crosscheck/` folder, run on one fixed sample from part A. **Criterion X1:** point estimate agrees to 1e-6 relative, bootstrap SE to within 3% (different random streams, so not identical). R needs an install and the owner's approval first. If not installed, X1 is reported as not done.
+
+### 21.7 Run order and reporting
+
+1. Z0. 2. Unit tests T1, T2, C3, C4, F3 (deterministic, no seeds). 3. Part A run, then part B, then part C. 4. One `REPORT.md` per part in `results/v0.4*/`, each criterion marked met, narrowly met, or not met, with the number and its Monte Carlo SE. Failures stay in the report. 5. Then update proposal §3 and §9, which cite only what the reports show.
+
+### 21.8 Not in v0.4
+
+Changing the take-all cap (open decision 5), the S4 mitigation (dropout recall comparison), the separate-ratio fallback test, and an S5 mitigation. They stay listed as limits.
 
 ---
 

@@ -21,7 +21,7 @@ from .estimate import (CellSample, ListSample, design_weights, e0_estimate, e1_e
                        e3_estimate, kish_deff, kish_deff_factors)
 from .select import phase2_subsample, prn_values, rep_streams, select_smallest
 from .synth import District, eta_cv, lognormal_noise, make_district, response_probability
-from .variance import bootstrap_e3, ci_t, lin_var_e1, lin_var_e2, lin_var_e3
+from .variance import bootstrap_e3, ci_t, lin_var_e1, lin_var_e2, lin_var_e3, lin_var_p
 
 EST = ["E0", "E1", "E2", "E3"]          # E3 interval = bootstrap (primary); E3lin = linearised cross-check
 
@@ -86,7 +86,7 @@ def run_rep(args) -> list[dict]:
     for name in scen_names:
         sc = _scen_ctx(name, ov)
         cfg = sc["cfg"]
-        s0, s1, s2, s3, s4, _ = rep_streams(cfg0.master_seed, rep)
+        s0, s1, s2, s3, s4, s5 = rep_streams(cfg0.master_seed, rep)
         eta = lognormal_noise(s0.standard_normal(n_sel), sc["cv_diary"])
         xi = lognormal_noise(s0.standard_normal(n_sel), sc["cv_recall"])
         xi_nol = lognormal_noise(s0.standard_normal(nol_y.size), sc["cv_recall"])
@@ -109,7 +109,10 @@ def run_rep(args) -> list[dict]:
         r_nol = nol_y * (1 + cfg.beta_recall) * xi_nol
         cz = np.bincount(nol_cell, weights=r_nol, minlength=cfg0.n_cells)
         cn = np.bincount(nol_cell, minlength=cfg0.n_cells).astype(float)
-        cs = CellSample(cell_g[csel], C_g, c_g.astype(float), cz[csel], cn[csel])
+        cza = None
+        if cfg.productivity:
+            cza = np.bincount(nol_cell, weights=nol["area"].values, minlength=cfg0.n_cells)[csel]
+        cs = CellSample(cell_g[csel], C_g, c_g.astype(float), cz[csel], cn[csel], cza)
 
         row = {"scenario": name, "rep": rep, "truth": truth}
         row["E0_est"] = e0_estimate(frame_area, cfg.e0_norm_productivity)
@@ -126,8 +129,13 @@ def run_rep(args) -> list[dict]:
         row["E3_est"] = e3["Y"]
         _, row["E3lin_lo"], row["E3lin_hi"] = ci_t(e3["Y"], lv["V"], lv["df"], cfg.ci_level)
         row["E3lin_se"] = float(np.sqrt(max(lv["V"], 0.0)))
+        bp = None
         if do_boot:
-            bs = bootstrap_e3(ls, cs, cfg, s4)
+            if cfg.takeall_phase2 or cfg.productivity:       # v0.4 paths; s5 is a stream apart from s4
+                bp = bootstrap_e3(ls, cs, cfg, s4, s5, full=True)
+                bs = bp["Y"]
+            else:
+                bs = bootstrap_e3(ls, cs, cfg, s4)
             bse = float(np.nanstd(bs, ddof=1))
             row["E3_se"], row["E3_lo"], row["E3_hi"] = ci_t(e3["Y"], bse**2, lv["df"], cfg.ci_level)
             row["boot_nan"] = int(np.isnan(bs).sum())
@@ -144,6 +152,18 @@ def run_rep(args) -> list[dict]:
                    V_L=lv["V_L"], V_NL=lv["V_NL"], R_hat=e3["R"], Rrec_hat=e3["Rrec"],
                    YNL_hat=e3["YNL"], undercov_hat=e3["nol_units"] / (e3["nol_units"] + N_h.sum()),
                    n_np_classes=int(np.unique(e3["classes"]).size))
+        if cfg.takeall_phase2:
+            row["ta_phase2_skipped"] = len(bp["ta_skipped"]) if bp is not None else 0
+        if cfg.productivity:
+            P_truth = truth / float(dist.units["area"].sum())
+            row.update(P_truth=P_truth, A_hat=e3["A"], P_est=e3["P"])
+            vP = lin_var_p(ls, e3, cs, lv["V"])
+            row["Plin_se"], row["Plin_lo"], row["Plin_hi"] = ci_t(e3["P"], vP, lv["df"], cfg.ci_level)
+            if bp is not None:
+                pse = float(np.nanstd(bp["P"], ddof=1))
+                row["P_se"], row["P_lo"], row["P_hi"] = ci_t(e3["P"], pse**2, lv["df"], cfg.ci_level)
+            else:
+                row.update(P_se=np.nan, P_lo=np.nan, P_hi=np.nan)
         rows.append(row)
     return rows
 
@@ -187,6 +207,28 @@ def metrics(df: pd.DataFrame, level: float = 0.95) -> pd.DataFrame:
                 "rse_empirical": float(np.std(est, ddof=1) / T) if len(est) > 1 else np.nan,
                 "rse_mean_estimated": float(np.nanmean(se) / np.mean(est)) if has_ci else np.nan,
             })
+    if "P_est" in df.columns:        # v0.4 productivity rows; truth_t_simulated and *_t columns are in t/ha
+        for scen, d in df.groupby("scenario", sort=True):
+            T = d["P_truth"].iloc[0]
+            for e in ("P", "Plin"):
+                est = d["P_est"].values
+                lo, hi, se = d[f"{e}_lo"].values, d[f"{e}_hi"].values, d[f"{e}_se"].values
+                ok = ~np.isnan(lo)
+                if not ok.any():
+                    continue
+                cov = float(np.mean((lo[ok] <= T) & (T <= hi[ok])))
+                out.append({
+                    "scenario": scen, "estimator": e, "reps": len(d), "truth_t_simulated": T,
+                    "rel_bias": float(np.mean(est - T) / T),
+                    "rel_bias_mc_se": float(np.std(est, ddof=1) / np.sqrt(len(est)) / T),
+                    "rmse_t": float(np.sqrt(np.mean((est - T) ** 2))),
+                    "rel_rmse": float(np.sqrt(np.mean((est - T) ** 2)) / T),
+                    "coverage": cov, "coverage_mc_se": float(np.sqrt(cov * (1 - cov) / ok.sum())),
+                    "mean_ci_width_t": float(np.mean(hi[ok] - lo[ok])),
+                    "rel_ci_width": float(np.mean(hi[ok] - lo[ok]) / T),
+                    "rse_empirical": float(np.std(est, ddof=1) / T),
+                    "rse_mean_estimated": float(np.nanmean(se) / np.mean(est)),
+                })
     m = pd.DataFrame(out)
     return m[~((m["estimator"] == "E3lin") & m["coverage"].isna())].reset_index(drop=True)
 
@@ -258,8 +300,15 @@ def main(argv=None):
     ap.add_argument("--master-seed", type=int, default=None, help="override Config.master_seed")
     ap.add_argument("--cal-rule", choices=["v0.2", "v0.3"], default="v0.3",
                     help="v0.2 = threshold 4, no N_h-only fallback (design.md section 19)")
+    ap.add_argument("--takeall-phase2", action="store_true", help="v0.4 (21.1): phase-2 resampling in take-all strata")
+    ap.add_argument("--productivity", action="store_true", help="v0.4 (21.2): estimate P = Y/A")
+    ap.add_argument("--v04", action="store_true", help="shorthand for --takeall-phase2 --productivity")
     a = ap.parse_args(argv)
     overrides = {}
+    if a.takeall_phase2 or a.v04:
+        overrides["takeall_phase2"] = True
+    if a.productivity or a.v04:
+        overrides["productivity"] = True
     if a.pop_seed is not None:
         overrides["pop_seed"] = a.pop_seed
     if a.master_seed is not None:

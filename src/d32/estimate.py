@@ -36,6 +36,8 @@ class CellSample:
     c_g: np.ndarray       # sampled cells per stratum
     z: np.ndarray         # raw recall total of the not-on-list units found in the cell
     n_nol: np.ndarray     # number of not-on-list units found in the cell
+    za: np.ndarray | None = None   # water area (ha) of the not-on-list units found in the cell (measured
+                                   # by the field team during listing, design.md 3.3 step 4); None = no area
 
     @property
     def cw(self) -> np.ndarray:
@@ -138,8 +140,10 @@ def ratio_total(w1, w2, x, y, r, resp, ver):
     return X, R, Rrec
 
 
-def e3_estimate(s: ListSample, w0: np.ndarray, cells: CellSample, cw: np.ndarray, cfg: Config) -> dict:
-    """Proposed estimator: two-phase combined ratio + propensity classes + not-on-list domain."""
+def e3_estimate(s: ListSample, w0: np.ndarray, cells: CellSample, cw: np.ndarray, cfg: Config,
+                ph2_mult: np.ndarray | None = None) -> dict:
+    """Proposed estimator: two-phase combined ratio + propensity classes + not-on-list domain.
+    ph2_mult (bootstrap only, design.md 21.1): per-unit rescaling of the phase-2 weights w2."""
     wa, cls, phi = nonresponse_weights(w0, s.resp, s.Z, cfg.n_np_classes, cfg.phi_cap, cfg.logit_ridge,
                                        s.tiebreak)
     if s.area is not None and s.A_h is not None:
@@ -149,14 +153,21 @@ def e3_estimate(s: ListSample, w0: np.ndarray, cells: CellSample, cw: np.ndarray
     cal_failed = cal["miss_before"]
     w1 = wa * g
     w2 = phase2_weights(w0, w1, s.stratum, s.resp, s.ver, s.H)
+    if ph2_mult is not None:
+        w2 = w2 * ph2_mult
     X, R, Rrec = ratio_total(w1, w2, s.x, s.y, s.r, s.resp, s.ver)
     YL = R * X
     Hhat = float(np.sum(cw * cells.z))
     YNL = Rrec * Hhat
     nol_units = float(np.sum(cw * cells.n_nol))
-    return {"Y": YL + YNL, "YL": YL, "YNL": YNL, "X": X, "R": R, "Rrec": Rrec, "H": Hhat,
-            "nol_units": nol_units, "w1": w1, "w2": w2, "classes": cls, "phi": phi, "g": g,
-            "cal_failed": cal_failed, "cal": cal}
+    out = {"Y": YL + YNL, "YL": YL, "YNL": YNL, "X": X, "R": R, "Rrec": Rrec, "H": Hhat,
+           "nol_units": nol_units, "w1": w1, "w2": w2, "classes": cls, "phi": phi, "g": g,
+           "cal_failed": cal_failed, "cal": cal}
+    if cells.za is not None and s.A_h is not None:      # design.md 8.8: frame area + not-on-list area
+        out["A_nl"] = float(np.sum(cw * cells.za))
+        out["A"] = float(np.sum(s.A_h)) + out["A_nl"]
+        out["P"] = out["Y"] / out["A"]
+    return out
 
 
 def e2_estimate(s: ListSample, w1: np.ndarray) -> float:

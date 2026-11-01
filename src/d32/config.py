@@ -85,6 +85,9 @@ class Config:
     cal_min_resp: int = 8                   # [DOC] v0.3 (was 4): fewer respondents -> calibrate to N_h only
     cal_fallback: bool = True               # [DOC] v0.3: a stratum that still misses N_h/A_h redoes N_h only
                                             # v0.2 rule on the same samples: cal_min_resp=4, cal_fallback=False
+    takeall_phase2: bool = False            # [DOC] v0.4 (21.1): bootstrap also resamples verified units in take-all
+                                            # strata. OFF = v0.3 behaviour (Z0 identity); on via --takeall-phase2/--v04
+    productivity: bool = False              # [DOC] v0.4 (21.2): also estimate P = Y/A (adds P columns); OFF = v0.3
     cells_water_rich: int = 20              # [ASSUMPTION] "about 30 cells" split 20 / 10
     cells_other: int = 10                   # [ASSUMPTION]
 
