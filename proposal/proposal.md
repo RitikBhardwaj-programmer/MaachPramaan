@@ -299,6 +299,7 @@ I report these whether or not they pass. S4 and S5 show where the design needs f
 
 - The synthetic district is a model. Real within-stratum spread may be larger: the simulated coefficient of variation is about 1.6 against 0.7 in the planning table. The sample will be re-sized from year-one data, and the intervals stay valid at any size.
 - Coverage is checked on one synthetic population per run. The v0.3 follow-up shows that a different district moves coverage by one to two points.
+- The interval leaves out one small source of variance: which of the largest (take-all) farms get weighed. An independent code review found this gap. It is recorded in the design document (section 20.2) with two options to close it. The effect is probably small (inference, not tested): the bootstrap standard error matched the real spread within 3% in the base case.
 - The pilot, not the simulation, decides whether farmers keep diaries and whether harvests are announced.
 
 ### 9.7 Prior work

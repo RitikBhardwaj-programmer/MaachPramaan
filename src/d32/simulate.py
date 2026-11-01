@@ -104,7 +104,8 @@ def run_rep(args) -> list[dict]:
             y_obs[i] = ysel[i] * sv + x_all[i] * (1 - sv)   # unverified events fall back to the diary
         x = np.where(resp, x_all, np.nan)
         ls = ListSample(stratum, N_h, w0, resp, ver, x, y_obs, r_all, Z[sel],
-                        area=listed["area"].values[sel], A_h=design.strata["A_h"].values)
+                        area=listed["area"].values[sel], A_h=design.strata["A_h"].values,
+                        tiebreak=prn[sel])
         r_nol = nol_y * (1 + cfg.beta_recall) * xi_nol
         cz = np.bincount(nol_cell, weights=r_nol, minlength=cfg0.n_cells)
         cn = np.bincount(nol_cell, minlength=cfg0.n_cells).astype(float)

@@ -22,6 +22,7 @@ class ListSample:
     Z: np.ndarray         # propensity covariates: intercept, log area, assisted, distance
     area: np.ndarray | None = None   # water area (ha) of each selected unit; None = no calibration
     A_h: np.ndarray | None = None    # frame water area per stratum (ha)
+    tiebreak: np.ndarray | None = None   # PRN per selected unit; orders equal propensities (design.md 20.1)
 
     @property
     def H(self) -> int:
@@ -139,7 +140,8 @@ def ratio_total(w1, w2, x, y, r, resp, ver):
 
 def e3_estimate(s: ListSample, w0: np.ndarray, cells: CellSample, cw: np.ndarray, cfg: Config) -> dict:
     """Proposed estimator: two-phase combined ratio + propensity classes + not-on-list domain."""
-    wa, cls, phi = nonresponse_weights(w0, s.resp, s.Z, cfg.n_np_classes, cfg.phi_cap, cfg.logit_ridge)
+    wa, cls, phi = nonresponse_weights(w0, s.resp, s.Z, cfg.n_np_classes, cfg.phi_cap, cfg.logit_ridge,
+                                       s.tiebreak)
     if s.area is not None and s.A_h is not None:
         g, cal = calibrate_detail(wa, s.stratum, s.area, s.N_h, s.A_h, s.resp, cfg)
     else:                                   # no frame totals supplied: classes only

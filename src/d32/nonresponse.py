@@ -25,9 +25,11 @@ def fit_logit(Z: np.ndarray, resp: np.ndarray, w: np.ndarray, ridge: float, iter
     return beta
 
 
-def propensity_classes(phat: np.ndarray, k: int) -> np.ndarray:
-    """Quintile-style classes by predicted propensity (equal counts, ties broken by order)."""
-    order = np.argsort(phat, kind="stable")
+def propensity_classes(phat: np.ndarray, k: int, tiebreak: np.ndarray | None = None) -> np.ndarray:
+    """Quintile-style classes by predicted propensity (equal counts). Equal propensities are
+    ordered by `tiebreak` (design.md 20.1: the unit's PRN) so row order cannot change a class;
+    without a key they fall back to input order."""
+    order = np.argsort(phat, kind="stable") if tiebreak is None else np.lexsort((tiebreak, phat))
     cls = np.empty(phat.size, int)
     cls[order] = np.minimum((np.arange(phat.size) * k) // phat.size, k - 1)
     return cls
@@ -60,10 +62,11 @@ def propensity_scores(Z: np.ndarray, resp: np.ndarray, ridge: float) -> np.ndarr
     return 1 / (1 + np.exp(-np.clip(Z @ beta, -30, 30)))
 
 
-def nonresponse_weights(w0: np.ndarray, resp: np.ndarray, Z: np.ndarray, k: int, cap: float, ridge: float):
+def nonresponse_weights(w0: np.ndarray, resp: np.ndarray, Z: np.ndarray, k: int, cap: float, ridge: float,
+                        tiebreak: np.ndarray | None = None):
     """w0 * phi for respondents, 0 otherwise (steps 1-4 of section 9).
     Returns (weights, final classes, phi per unit)."""
     phat = propensity_scores(Z, resp, ridge)
-    cls = propensity_classes(phat, k)
+    cls = propensity_classes(phat, k, tiebreak)
     phi, cls = class_adjustment(w0, resp, cls, cap)
     return np.where(resp, w0 * phi, 0.0), cls, phi

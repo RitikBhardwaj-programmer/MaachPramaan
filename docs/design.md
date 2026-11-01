@@ -524,6 +524,19 @@ To separate the effect of the fix from the effect of a new district, the report 
 
 ---
 
+## 20. Items from the independent estimator review (2026-11-01, v0.4 candidates)
+
+A read-only review of `estimate.py`, `variance.py` and `nonresponse.py` by a second tool (Codex, run on 2026-11-01) reported two findings. I confirmed both by reading the code. Neither changes a headline result in sections 18 and 19. Neither is tuned on any seed.
+
+**20.1 Tied propensities were split by row order (fixed, no design change).** Section 9 step 2 sorts units by predicted propensity and cuts them into 5 classes. Units with exactly equal predicted propensity (equal log area, intensity proxy and distance, which a frame with rounded areas can produce) were ordered by their position in the input, so a different row order could move a unit across a class boundary and change the estimate. Rule from now on: ties are broken by the unit's permanent random number (section 13), which depends only on the seed and the unit ID. The code takes an optional tie-break key. The simulation passes the PRN of each selected unit. Without a key the old behaviour (input order) remains, only for callers that have no unit IDs. Expected effect on the simulation: none, because simulated areas are continuous and ties do not occur. A test checks that a shuffled sample gives the same classes when a key is given.
+
+**20.2 Take-all strata add no phase-2 variance to the bootstrap (open).** Section 8.6 says a take-all stratum still adds the phase-2 term when only a subsample of it is verified. Section 8.7 says take-all strata get $\lambda_h = 0$ and add no sampling variance. The code follows 8.7: with $f_h = 1$ the weights never change, and the set of verified units is fixed in every replicate, so the random choice of which take-all units are weighed adds no variance. The two sections disagree about take-all strata that are subsampled for verification. The phase-1 part of the statement in 8.7 is right ($f_h = 1$ means no phase-1 sampling variance). The phase-2 part is not covered.
+- Likely size (inference, not tested): small. About 20 take-all units and about 6 of them verified. Bootstrap SE over empirical SD was 1.03 (v0.2 seeds) and 0.976 (v0.3 seeds) in S1.
+- Options for v0.4: (a) keep the bootstrap, and state in 8.7 that the phase-2 term of take-all strata is left out; (b) resample the verified status inside take-all strata ($m_h - 1$ draws among the verified, rescaled), so the term is included. Option (b) needs a test against a hand-computed phase-2 variance. Choose after the deck, on new seeds, and write the choice here before any run.
+- Until then, the proposal limits (section 9.6) state that the interval leaves out the phase-2 variance of take-all units.
+
+---
+
 ## Glossary
 
 - **Stratum (plural strata):** a group of similar units sampled separately, for example "small assisted ponds in district 1".
