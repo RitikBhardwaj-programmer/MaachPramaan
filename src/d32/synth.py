@@ -78,7 +78,10 @@ def make_district(cfg: Config) -> District:
     z_prod = rng.standard_normal(n)
     s = cfg.prod_noise_sigma
     prod = base * np.exp(s * z_prod - s**2 / 2)
-    y = area * prod                                   # tonnes
+    if cfg.sigma_b != 0.0:      # design.md 21.4: block effect, own SeedSequence child so no other draw moves
+        u_b = np.random.default_rng(np.random.SeedSequence(cfg.pop_seed).spawn(3)[2]).standard_normal(cfg.n_blocks)
+        prod = prod * (1 + cfg.sigma_b * u_b[block])
+    y = area * prod                                  # tonnes
     n_events = rng.integers(1, cfg.max_events + 1, n)
 
     # grid cells ------------------------------------------------------------

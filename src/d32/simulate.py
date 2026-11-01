@@ -21,7 +21,9 @@ from .estimate import (CellSample, ListSample, design_weights, e0_estimate, e1_e
                        e3_estimate, kish_deff, kish_deff_factors)
 from .select import phase2_subsample, prn_values, rep_streams, select_smallest
 from .synth import District, eta_cv, lognormal_noise, make_district, response_probability
-from .variance import bootstrap_e3, ci_t, lin_var_e1, lin_var_e2, lin_var_e3, lin_var_p
+from .fayherriot import fay_herriot
+from .variance import (block_list_totals, bootstrap_e3, ci_t, lin_var_e1, lin_var_e2, lin_var_e3,
+                       lin_var_p)
 
 EST = ["E0", "E1", "E2", "E3"]          # E3 interval = bootstrap (primary); E3lin = linearised cross-check
 
@@ -43,6 +45,21 @@ def _base_ctx(ov: tuple = ()):
     cell_g = dist.cell_water_rich.astype(int)          # 0 = other, 1 = water-rich
     nol = dist.units.iloc[dist.n_listed:]
     return dist, design, Z, cell_g, nol
+
+
+@functools.lru_cache(maxsize=4)
+def _fh_ctx(ov: tuple = ()):
+    """Block frame quantities for the Fay-Herriot test (design.md 21.4): frame water area A_b, covariates
+    (intercept, log mean frame area, assisted share) and the list-frame truth theta_b = sum y / sum area."""
+    cfg = _cfg(ov)
+    u = _base_ctx(ov)[0].listed
+    g = u.groupby("block")
+    nb = cfg.n_blocks
+    area_b = g["area"].sum().reindex(range(nb)).values
+    X = np.column_stack([np.ones(nb), np.log(g["area"].mean().reindex(range(nb)).values),
+                         g["assisted"].mean().reindex(range(nb)).values])
+    theta = g["y"].sum().reindex(range(nb)).values / area_b
+    return area_b, X, theta
 
 
 @functools.lru_cache(maxsize=None)
@@ -105,7 +122,7 @@ def run_rep(args) -> list[dict]:
         x = np.where(resp, x_all, np.nan)
         ls = ListSample(stratum, N_h, w0, resp, ver, x, y_obs, r_all, Z[sel],
                         area=listed["area"].values[sel], A_h=design.strata["A_h"].values,
-                        tiebreak=prn[sel])
+                        tiebreak=prn[sel], block=listed["block"].values[sel] if cfg.fayherriot else None)
         r_nol = nol_y * (1 + cfg.beta_recall) * xi_nol
         cz = np.bincount(nol_cell, weights=r_nol, minlength=cfg0.n_cells)
         cn = np.bincount(nol_cell, minlength=cfg0.n_cells).astype(float)
@@ -131,7 +148,7 @@ def run_rep(args) -> list[dict]:
         row["E3lin_se"] = float(np.sqrt(max(lv["V"], 0.0)))
         bp = None
         if do_boot:
-            if cfg.takeall_phase2 or cfg.productivity:       # v0.4 paths; s5 is a stream apart from s4
+            if cfg.takeall_phase2 or cfg.productivity or cfg.fayherriot:       # v0.4 paths; s5 is a stream apart from s4
                 bp = bootstrap_e3(ls, cs, cfg, s4, s5, full=True)
                 bs = bp["Y"]
             else:
@@ -164,8 +181,35 @@ def run_rep(args) -> list[dict]:
                 row["P_se"], row["P_lo"], row["P_hi"] = ci_t(e3["P"], pse**2, lv["df"], cfg.ci_level)
             else:
                 row.update(P_se=np.nan, P_lo=np.nan, P_hi=np.nan)
+        if cfg.fayherriot:
+            fh = _fh_rows(ls, e3, bp, name, rep, ov, cfg)
+            row.update(fh["row"])
+            row["_fh"] = fh["blocks"]
         rows.append(row)
     return rows
+
+
+def _fh_rows(ls, e3, bp, name, rep, ov, cfg) -> dict:
+    """Direct block estimates, bootstrap variances, FH + benchmarking for one replication (design.md 21.4)."""
+    area_b, X, theta_true = _fh_ctx(ov)
+    nb = cfg.n_blocks
+    n_b = np.bincount(ls.block[ls.resp], minlength=nb)
+    Yb = block_list_totals(ls, e3, nb)
+    direct = np.where(n_b > 0, Yb / area_b, np.nan)
+    psi_raw = np.nanvar(bp["Yb"], axis=0, ddof=1) / area_b**2
+    r = fay_herriot(direct, psi_raw, n_b, X, area_b, e3["YL"])
+    half = 1.96 * np.sqrt(r["mse"])
+    scale = np.where(r["fh"] != 0, r["fh_bm"] / r["fh"], 1.0)
+    dhalf = 1.96 * np.sqrt(psi_raw)
+    blocks = [dict(scenario=name, rep=rep, block=b, truth=theta_true[b], n_resp=int(n_b[b]), valid=bool(r["valid"][b]),
+                   direct=direct[b], direct_lo=direct[b] - dhalf[b], direct_hi=direct[b] + dhalf[b],
+                   psi_raw=psi_raw[b], psi_gvf=r["psi_gvf"][b], gamma=r["gamma"][b], fh=r["fh"][b],
+                   fh_lo=r["fh"][b] - half[b], fh_hi=r["fh"][b] + half[b], fh_bm=r["fh_bm"][b],
+                   fh_bm_lo=r["fh_bm"][b] - half[b] * scale[b], fh_bm_hi=r["fh_bm"][b] + half[b] * scale[b],
+                   mse_pr=r["mse"][b]) for b in range(nb)]
+    bench_err = abs(float(np.sum(r["fh_bm"] * area_b)) - e3["YL"]) / abs(e3["YL"])
+    return {"blocks": blocks, "row": {"fh_sigma_v2": r["sigma_v2"], "fh_sigma_v2_unadj": r["sigma_v2_unadj"],
+                                      "fh_bench_err": bench_err, "fh_blocks_valid": int(r["valid"].sum())}}
 
 
 def run(reps: int, scenarios: list[str], workers: int, do_boot: bool, boot_reps: int | None = None,
@@ -177,7 +221,11 @@ def run(reps: int, scenarios: list[str], workers: int, do_boot: bool, boot_reps:
     else:
         with ProcessPoolExecutor(max_workers=workers) as ex:
             res = list(ex.map(run_rep, tasks, chunksize=4))
-    return pd.DataFrame([row for rr in res for row in rr])
+    fh = [b for rr in res for row in rr for b in row.get("_fh", [])]
+    df = pd.DataFrame([{k: v for k, v in row.items() if k != "_fh"} for rr in res for row in rr])
+    if fh:
+        df.attrs["fh_blocks"] = pd.DataFrame(fh)
+    return df
 
 
 def metrics(df: pd.DataFrame, level: float = 0.95) -> pd.DataFrame:
@@ -231,6 +279,40 @@ def metrics(df: pd.DataFrame, level: float = 0.95) -> pd.DataFrame:
                 })
     m = pd.DataFrame(out)
     return m[~((m["estimator"] == "E3lin") & m["coverage"].isna())].reset_index(drop=True)
+
+
+def fh_metrics(b: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
+    """Design.md 21.4 criteria from the per-block table: F1/F5 mean over blocks of MSE(FH)/MSE(direct), F2 mean
+    coverage of the Prasad-Rao interval, F4 share of replications with unadjusted REML sigma_v^2 = 0, F3 max
+    benchmark error. Blocks without a direct estimate in a replication are left out of that replication."""
+    b = b[b.valid]
+    rows = []
+    for scen, d in b.groupby("scenario", sort=True):
+        per = pd.DataFrame({"block": sorted(d.block.unique())}).set_index("block")
+        for blk, x in d.groupby("block"):
+            per.loc[blk, "mse_direct"] = np.mean((x.direct - x.truth) ** 2)
+            per.loc[blk, "mse_fh"] = np.mean((x.fh - x.truth) ** 2)
+            per.loc[blk, "mse_fh_bm"] = np.mean((x.fh_bm - x.truth) ** 2)
+            per.loc[blk, "cov_direct"] = np.mean((x.direct_lo <= x.truth) & (x.truth <= x.direct_hi))
+            per.loc[blk, "cov_fh"] = np.mean((x.fh_lo <= x.truth) & (x.truth <= x.fh_hi))
+            per.loc[blk, "cov_fh_bm"] = np.mean((x.fh_bm_lo <= x.truth) & (x.truth <= x.fh_bm_hi))
+            per.loc[blk, "gamma_mean"] = x.gamma.mean()
+            per.loc[blk, "n_resp_mean"] = x.n_resp.mean()
+        per["ratio_fh"] = per.mse_fh / per.mse_direct
+        per["ratio_fh_bm"] = per.mse_fh_bm / per.mse_direct
+        per.insert(0, "scenario", scen)
+        rows.append(per.reset_index())
+    out = pd.concat(rows, ignore_index=True)
+    summ = []
+    for scen, d in out.groupby("scenario"):
+        r = df[df.scenario == scen]
+        summ.append({"scenario": scen, "block": "ALL", "reps": len(r),
+                     "F1_ratio_fh_bm": d.ratio_fh_bm.mean(), "ratio_fh_unbenchmarked": d.ratio_fh.mean(),
+                     "F2_cov_fh_bm": d.cov_fh_bm.mean(), "cov_fh": d.cov_fh.mean(), "cov_direct": d.cov_direct.mean(),
+                     "F3_max_bench_err": r.fh_bench_err.max(),
+                     "F4_share_unadj_reml_zero": float((r.fh_sigma_v2_unadj == 0).mean()),
+                     "sigma_v2_mean": r.fh_sigma_v2.mean(), "gamma_mean": d.gamma_mean.mean()})
+    return pd.concat([out.astype({"block": object}), pd.DataFrame(summ)], ignore_index=True)
 
 
 def ac4_ratio(df: pd.DataFrame, scen: str = "S1") -> dict:
@@ -302,11 +384,20 @@ def main(argv=None):
                     help="v0.2 = threshold 4, no N_h-only fallback (design.md section 19)")
     ap.add_argument("--takeall-phase2", action="store_true", help="v0.4 (21.1): phase-2 resampling in take-all strata")
     ap.add_argument("--productivity", action="store_true", help="v0.4 (21.2): estimate P = Y/A")
+    ap.add_argument("--fh", action="store_true", help="v0.4 (21.4): Fay-Herriot block estimates (needs bootstrap)")
+    ap.add_argument("--sigma-b", type=float, default=None, help="block effect sd on productivity (Config.sigma_b)")
+    ap.add_argument("--n-blocks", type=int, default=None, help="blocks per district (Config.n_blocks)")
     ap.add_argument("--v04", action="store_true", help="shorthand for --takeall-phase2 --productivity")
     a = ap.parse_args(argv)
     overrides = {}
     if a.takeall_phase2 or a.v04:
         overrides["takeall_phase2"] = True
+    if a.fh:
+        overrides["fayherriot"] = True
+    if a.sigma_b is not None:
+        overrides["sigma_b"] = a.sigma_b
+    if a.n_blocks is not None:
+        overrides["n_blocks"] = a.n_blocks
     if a.productivity or a.v04:
         overrides["productivity"] = True
     if a.pop_seed is not None:
@@ -322,6 +413,11 @@ def main(argv=None):
     df.to_csv(out / "replications.csv", index=False)
     met = metrics(df)
     met.to_csv(out / "metrics.csv", index=False)
+    if "fh_blocks" in df.attrs:
+        df.attrs["fh_blocks"].to_csv(out / "fh_blocks.csv", index=False)
+        fhm = fh_metrics(df.attrs["fh_blocks"], df)
+        fhm.to_csv(out / "fh_metrics.csv", index=False)
+        print(fhm[fhm.block == "ALL"].to_string())
     (out / "config_used.json").write_text(_cfg(tuple(sorted(overrides.items()))).to_json() + "\n", encoding="utf-8")
     if not a.no_plots:
         make_plots(df, met, out)

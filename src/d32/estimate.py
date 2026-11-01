@@ -23,6 +23,7 @@ class ListSample:
     area: np.ndarray | None = None   # water area (ha) of each selected unit; None = no calibration
     A_h: np.ndarray | None = None    # frame water area per stratum (ha)
     tiebreak: np.ndarray | None = None   # PRN per selected unit; orders equal propensities (design.md 20.1)
+    block: np.ndarray | None = None      # development block per selected unit (Fay-Herriot, design.md 21.4)
 
     @property
     def H(self) -> int:

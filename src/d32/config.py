@@ -41,7 +41,9 @@ class Config:
     prod_pond_assisted: float = 5.5
     prod_tank_plain: float = 3.5
     prod_tank_assisted: float = 6.0
-    prod_noise_sigma: float = 0.5     # [ASSUMPTION] log-sd of unit-level noise (mean-1 lognormal)
+    sigma_b: float = 0.0              # [ASSUMPTION] v0.4 (21.4) block effect on productivity, prod *= 1 + sigma_b*u_b;
+                                      # 0 = the S1-S5 population, unchanged (u_b comes from its own SeedSequence child)
+    prod_noise_sigma: float = 0.5    # [ASSUMPTION] log-sd of unit-level noise (mean-1 lognormal)
 
     # ---- measurement errors (design.md 15.1) ------------------------------
     beta_diary_assisted: float = -0.10      # [DOC]
@@ -87,7 +89,11 @@ class Config:
                                             # v0.2 rule on the same samples: cal_min_resp=4, cal_fallback=False
     takeall_phase2: bool = False            # [DOC] v0.4 (21.1): bootstrap also resamples verified units in take-all
                                             # strata. OFF = v0.3 behaviour (Z0 identity); on via --takeall-phase2/--v04
-    productivity: bool = False              # [DOC] v0.4 (21.2): also estimate P = Y/A (adds P columns); OFF = v0.3
+    rho_u: float = 0.6                      # [ASSUMPTION] v0.4 (21.5, scenario S6) year-to-year unit persistence of productivity
+    trend: float = 0.03                     # [ASSUMPTION] v0.4 (21.5) district productivity trend per year
+    k_max: float = 0.8                      # [DOC] v0.4 (21.5) upper clip of the composite weight K
+    fayherriot: bool = False               # [DOC] v0.4 (21.4): block estimates (direct, FH, benchmarked); needs bootstrap
+    productivity: bool = False             # [DOC] v0.4 (21.2): also estimate P = Y/A (adds P columns); OFF = v0.3
     cells_water_rich: int = 20              # [ASSUMPTION] "about 30 cells" split 20 / 10
     cells_other: int = 10                   # [ASSUMPTION]
 

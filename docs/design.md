@@ -562,7 +562,7 @@ A read-only review of `estimate.py`, `variance.py` and `nonresponse.py` by a sec
 
 | # | Criterion | Check |
 |---|---|---|
-| T1 | On a fixed take-all stratum with known $e_i$, the bootstrap variance of the stratum's phase-2 contribution matches the hand formula above within 2% (large $B$, fixed seed). | Unit test, hand-computed |
+| T1 | On a fixed take-all stratum with known $e_i$, the bootstrap variance of the stratum's phase-2 contribution matches the hand formula above within 2% (large $B$, fixed seed), in a stratum with equal phase-2 weights (one propensity class, no calibration). With unequal calibrated weights the hand formula is only approximate (a first attempt came out 12% low); a second test through the full bootstrap uses a 6% tolerance against $(X/\sum w_2 x)^2$ times the formula. | Unit test, hand-computed |
 | T2 | With $m_h = n'_h$ (all verified) the added term is zero. | Unit test |
 | T3 | S1, part A: AC1 to AC5 hold (coverage 93% to 97%, bias below 1%, bootstrap SE within 10% of the empirical SD, RSE at most 7.5%). Judge them as a replication on a new district. | Run |
 | T4 | Paired diagnostic on the v0.3 seeds (20261103/5521, same samples): report mean bootstrap SE with and without the term. Option (b) stays whatever this shows. | Run, report only |

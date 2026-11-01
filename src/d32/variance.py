@@ -151,6 +151,7 @@ def bootstrap_e3(s: ListSample, cells: CellSample, cfg: Config, rng: np.random.G
     cells carry area (21.2), instead of the array of Y."""
     out = np.full(cfg.n_boot, np.nan)
     outA = np.full(cfg.n_boot, np.nan)
+    outB = np.full((cfg.n_boot, cfg.n_blocks), np.nan) if s.block is not None and full else None
     cw0 = cells.cw
     use, skipped = takeall_strata(s) if cfg.takeall_phase2 else ([], [])
     for b in range(cfg.n_boot):
@@ -161,11 +162,22 @@ def bootstrap_e3(s: ListSample, cells: CellSample, cfg: Config, rng: np.random.G
             e = e3_estimate(s, w0, cells, cw, cfg, mult)
             out[b] = e["Y"]
             outA[b] = e.get("A", np.nan)
+            if outB is not None:
+                outB[b] = block_list_totals(s, e, cfg.n_blocks)
         except np.linalg.LinAlgError:
             pass
     if not full:
         return out
-    return {"Y": out, "A": outA, "P": out / outA, "ta_skipped": skipped, "ta_used": use}
+    res = {"Y": out, "A": outA, "P": out / outA, "ta_skipped": skipped, "ta_used": use}
+    if outB is not None:
+        res["Yb"] = outB
+    return res
+
+
+def block_list_totals(s: ListSample, e: dict, n_blocks: int) -> np.ndarray:
+    """List-frame total per development block: R * sum of w1 * x over the respondents of the block."""
+    r = s.resp
+    return e["R"] * np.bincount(s.block[r], weights=(e["w1"] * s.x)[r], minlength=n_blocks)
 
 
 def lin_var_p(s: ListSample, est: dict, cells: CellSample, V_Y: float) -> float:
