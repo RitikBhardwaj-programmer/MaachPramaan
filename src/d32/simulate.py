@@ -13,6 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from dataclasses import replace
+
 from .config import BASE, SCENARIOS, Config, scenario_config
 from .design import build_design
 from .estimate import (CellSample, ListSample, design_weights, e0_estimate, e1_estimate, e2_estimate,
@@ -24,8 +26,14 @@ from .variance import bootstrap_e3, ci_t, lin_var_e1, lin_var_e2, lin_var_e3
 EST = ["E0", "E1", "E2", "E3"]          # E3 interval = bootstrap (primary); E3lin = linearised cross-check
 
 
-@functools.lru_cache(maxsize=1)
-def _base_ctx():
+def _cfg(ov: tuple) -> Config:
+    """BASE with overrides (tuple of (field, value) pairs; hashable so the caches can key on it)."""
+    return replace(BASE, **dict(ov))
+
+
+@functools.lru_cache(maxsize=4)
+def _base_ctx(ov: tuple = ()):
+    BASE = _cfg(ov)
     dist = make_district(BASE)
     design = build_design(dist.listed, BASE)
     u = dist.listed
@@ -38,9 +46,9 @@ def _base_ctx():
 
 
 @functools.lru_cache(maxsize=None)
-def _scen_ctx(name: str):
-    dist, design, Z, cell_g, nol = _base_ctx()
-    cfg = scenario_config(name)
+def _scen_ctx(name: str, ov: tuple = ()):
+    dist, design, Z, cell_g, nol = _base_ctx(ov)
+    cfg = scenario_config(name, _cfg(ov))
     y = dist.units["y"].values
     return {
         "cfg": cfg,
@@ -51,9 +59,9 @@ def _scen_ctx(name: str):
 
 
 def run_rep(args) -> list[dict]:
-    rep, scen_names, do_boot = args
-    dist, design, Z, cell_g, nol = _base_ctx()
-    cfg0 = BASE
+    rep, scen_names, do_boot, ov = args
+    dist, design, Z, cell_g, nol = _base_ctx(ov)
+    cfg0 = _cfg(ov)
     key = f"{cfg0.master_seed}/{rep}"
     listed = dist.listed
     prn = prn_values(key, listed["unit_id"].values)
@@ -76,7 +84,7 @@ def run_rep(args) -> list[dict]:
     nol_cell = nol["cell"].values
     rows = []
     for name in scen_names:
-        sc = _scen_ctx(name)
+        sc = _scen_ctx(name, ov)
         cfg = sc["cfg"]
         s0, s1, s2, s3, s4, _ = rep_streams(cfg0.master_seed, rep)
         eta = lognormal_noise(s0.standard_normal(n_sel), sc["cv_diary"])
@@ -127,7 +135,10 @@ def run_rep(args) -> list[dict]:
         row.update(n_sel=n_sel, n_resp=int(resp.sum()), n_ver=int(ver.sum()),
                    deff_full=kish_deff(e3["w1"]),
                    deff_factors=kish_deff_factors(e3["phi"] * e3["g"], stratum, resp),
-                   cal_failed=len(e3["cal_failed"]), g_min=float(e3["g"][resp].min()),
+                   cal_failed=len(e3["cal_failed"]), cal_fallback=len(e3["cal"]["fallback"]),
+                   cal_unmet_after=len(e3["cal"]["unmet_after"]), cal_zero_resp=len(e3["cal"]["zero_resp"]),
+                   cal_at_bound=int(e3["g"][resp].min() <= cfg.cal_g_lo + 1e-9
+                                    or e3["g"][resp].max() >= cfg.cal_g_hi - 1e-9), g_min=float(e3["g"][resp].min()),
                    g_max=float(e3["g"][resp].max()), var_fallbacks=lv["var_fallbacks"],
                    V_L=lv["V_L"], V_NL=lv["V_NL"], R_hat=e3["R"], Rrec_hat=e3["Rrec"],
                    YNL_hat=e3["YNL"], undercov_hat=e3["nol_units"] / (e3["nol_units"] + N_h.sum()),
@@ -136,8 +147,10 @@ def run_rep(args) -> list[dict]:
     return rows
 
 
-def run(reps: int, scenarios: list[str], workers: int, do_boot: bool, boot_reps: int | None = None) -> pd.DataFrame:
-    tasks = [(r, scenarios, do_boot and (boot_reps is None or r < boot_reps)) for r in range(reps)]
+def run(reps: int, scenarios: list[str], workers: int, do_boot: bool, boot_reps: int | None = None,
+        overrides: dict | None = None) -> pd.DataFrame:
+    ov = tuple(sorted((overrides or {}).items()))
+    tasks = [(r, scenarios, do_boot and (boot_reps is None or r < boot_reps), ov) for r in range(reps)]
     if workers <= 1:
         res = [run_rep(t) for t in tasks]
     else:
@@ -240,15 +253,26 @@ def main(argv=None):
     ap.add_argument("--no-boot", action="store_true")
     ap.add_argument("--boot-reps", type=int, default=None, help="bootstrap only the first k replications")
     ap.add_argument("--no-plots", action="store_true")
+    ap.add_argument("--pop-seed", type=int, default=None, help="override Config.pop_seed")
+    ap.add_argument("--master-seed", type=int, default=None, help="override Config.master_seed")
+    ap.add_argument("--cal-rule", choices=["v0.2", "v0.3"], default="v0.3",
+                    help="v0.2 = threshold 4, no N_h-only fallback (design.md section 19)")
     a = ap.parse_args(argv)
+    overrides = {}
+    if a.pop_seed is not None:
+        overrides["pop_seed"] = a.pop_seed
+    if a.master_seed is not None:
+        overrides["master_seed"] = a.master_seed
+    if a.cal_rule == "v0.2":
+        overrides.update(cal_min_resp=4, cal_fallback=False)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     scens = a.scenarios.split(",")
-    df = run(a.reps, scens, a.workers, not a.no_boot, a.boot_reps)
+    df = run(a.reps, scens, a.workers, not a.no_boot, a.boot_reps, overrides)
     df.to_csv(out / "replications.csv", index=False)
     met = metrics(df)
     met.to_csv(out / "metrics.csv", index=False)
-    (out / "config_used.json").write_text(BASE.to_json() + "\n", encoding="utf-8")
+    (out / "config_used.json").write_text(_cfg(tuple(sorted(overrides.items()))).to_json() + "\n", encoding="utf-8")
     if not a.no_plots:
         make_plots(df, met, out)
     print(met.to_string(float_format=lambda v: f"{v:.4f}"))

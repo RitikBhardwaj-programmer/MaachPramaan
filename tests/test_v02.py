@@ -1,5 +1,6 @@
 """Tests for the design.md v0.2 changes (section 18)."""
 import inspect
+from dataclasses import replace
 
 import numpy as np
 
@@ -41,7 +42,8 @@ def test_calibration_respects_bounds_and_logs_failure():
     stratum, w, area, N_h, A_h = _two_strata()
     resp = np.ones(50, bool)
     A_bad = A_h * np.array([8.0, 1.0])                          # unreachable with g <= 3
-    g, failed = calibrate(w, stratum, area, N_h, A_bad, resp, BASE)
+    # v0.2 rule (no N_h-only fallback); the v0.3 fallback is tested in test_v03.py
+    g, failed = calibrate(w, stratum, area, N_h, A_bad, resp, replace(BASE, cal_min_resp=4, cal_fallback=False))
     assert failed == [0]
     assert g.min() >= BASE.cal_g_lo - 1e-12 and g.max() <= BASE.cal_g_hi + 1e-12
 

@@ -77,27 +77,45 @@ def _greg_stratum(w, a, N, A, lo, hi, max_iter, area_too):
     return g, ok
 
 
-def calibrate(w, stratum, area, N_h, A_h, resp, cfg: Config):
-    """Step 5 of design.md v0.2 section 9. Respondents of each stratum are calibrated to the frame
-    count N_h and water area A_h; strata with fewer than cfg.cal_min_resp respondents to N_h only.
-    Returns (g per unit, list of strata whose constraints did not hold)."""
+def calibrate_detail(w, stratum, area, N_h, A_h, resp, cfg: Config):
+    """Step 5 of design.md section 9 (v0.3). Respondents of each stratum are calibrated to the frame
+    count N_h and water area A_h; a stratum with fewer than cfg.cal_min_resp respondents to N_h only.
+    If cfg.cal_fallback and a both-constraint calibration still misses after cfg.cal_max_iter
+    iterations, the stratum is redone with N_h only. With cal_min_resp=4 and cal_fallback=False this
+    is the v0.2 rule.
+
+    Returns (g per unit, info) with info lists of stratum indices:
+      miss_before   strata whose first attempt missed (v0.2 definition; includes zero respondents)
+      fallback      strata redone with N_h only
+      unmet_after   strata with an attempted constraint still unmet at the end (V1; no zero-respondent)
+      zero_resp     strata with no respondents (no weights, recorded)
+    """
     g = np.ones(w.size)
-    failed = []
+    info = {"miss_before": [], "fallback": [], "unmet_after": [], "zero_resp": []}
+    args = (cfg.cal_g_lo, cfg.cal_g_hi, cfg.cal_max_iter)
     for h in range(N_h.size):
         idx = np.where(resp & (stratum == h))[0]
         if idx.size == 0:
-            failed.append(h)
+            info["miss_before"].append(h)
+            info["zero_resp"].append(h)
             continue
-        if idx.size < cfg.cal_min_resp:
-            gh, ok = _greg_stratum(w[idx], area[idx], N_h[h], A_h[h], cfg.cal_g_lo, cfg.cal_g_hi,
-                                   cfg.cal_max_iter, False)
-        else:
-            gh, ok = _greg_stratum(w[idx], area[idx], N_h[h], A_h[h], cfg.cal_g_lo, cfg.cal_g_hi,
-                                   cfg.cal_max_iter, True)
+        both = idx.size >= cfg.cal_min_resp
+        gh, ok = _greg_stratum(w[idx], area[idx], N_h[h], A_h[h], *args, both)
+        if not ok:
+            info["miss_before"].append(h)
+            if both and cfg.cal_fallback:
+                gh, ok = _greg_stratum(w[idx], area[idx], N_h[h], A_h[h], *args, False)
+                info["fallback"].append(h)
         g[idx] = gh
         if not ok:
-            failed.append(h)
-    return g, failed
+            info["unmet_after"].append(h)
+    return g, info
+
+
+def calibrate(w, stratum, area, N_h, A_h, resp, cfg: Config):
+    """As calibrate_detail; returns (g, strata that end with an unmet constraint, or no respondents)."""
+    g, info = calibrate_detail(w, stratum, area, N_h, A_h, resp, cfg)
+    return g, sorted(info["unmet_after"] + info["zero_resp"])
 
 
 def phase2_weights(w0, w1, stratum, resp, ver, H) -> np.ndarray:
@@ -123,9 +141,10 @@ def e3_estimate(s: ListSample, w0: np.ndarray, cells: CellSample, cw: np.ndarray
     """Proposed estimator: two-phase combined ratio + propensity classes + not-on-list domain."""
     wa, cls, phi = nonresponse_weights(w0, s.resp, s.Z, cfg.n_np_classes, cfg.phi_cap, cfg.logit_ridge)
     if s.area is not None and s.A_h is not None:
-        g, cal_failed = calibrate(wa, s.stratum, s.area, s.N_h, s.A_h, s.resp, cfg)
+        g, cal = calibrate_detail(wa, s.stratum, s.area, s.N_h, s.A_h, s.resp, cfg)
     else:                                   # no frame totals supplied: classes only
-        g, cal_failed = np.ones_like(wa), []
+        g, cal = np.ones_like(wa), {"miss_before": [], "fallback": [], "unmet_after": [], "zero_resp": []}
+    cal_failed = cal["miss_before"]
     w1 = wa * g
     w2 = phase2_weights(w0, w1, s.stratum, s.resp, s.ver, s.H)
     X, R, Rrec = ratio_total(w1, w2, s.x, s.y, s.r, s.resp, s.ver)
@@ -135,7 +154,7 @@ def e3_estimate(s: ListSample, w0: np.ndarray, cells: CellSample, cw: np.ndarray
     nol_units = float(np.sum(cw * cells.n_nol))
     return {"Y": YL + YNL, "YL": YL, "YNL": YNL, "X": X, "R": R, "Rrec": Rrec, "H": Hhat,
             "nol_units": nol_units, "w1": w1, "w2": w2, "classes": cls, "phi": phi, "g": g,
-            "cal_failed": cal_failed}
+            "cal_failed": cal_failed, "cal": cal}
 
 
 def e2_estimate(s: ListSample, w1: np.ndarray) -> float:

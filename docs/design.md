@@ -1,7 +1,7 @@
 # D-32 Statistical Design Document
 
 **Challenge:** NESFIC-D-32, Scientific Sample Survey for Pond and Tank Aquaculture Production Estimation (Fishery Department, Assam).
-**Version:** 0.2 (draft), 2026-11-01. Changes from v0.1 are listed in section 18. They were written before the confirmatory simulation run.
+**Version:** 0.3 (draft), 2026-11-01. Changes from v0.1 are listed in section 18 (written before the confirmatory run). Changes from v0.2 are in section 19 (post-confirmation; written before the v0.3 check run).
 **Status:** Design only. No real data is used. Every number marked *estimate* is own arithmetic from stated assumptions. Every result from the simulation will be marked *simulated*.
 
 Sources: the [D-32 challenge page](https://startup.assam.gov.in/nesfic26/problem-statements/nesfic-d-32), the [USPR](https://startup.assam.gov.in/nesfic26/docs/uspr.pdf), and the research plan (`C:\Users\DELL\.claude\plans\yes-it-has-currently-eventual-pretzel.md`), which holds the source links for the shortcomings in section 1. Textbook methods cite standard references (section 14). I did not re-read those references for this draft.
@@ -125,6 +125,8 @@ Inside each district × type cell, set boundaries on water area by the **cumulat
 Large water bodies (big tanks, commercial farms) carry a large share of output. A sample that misses one, or includes one, swings the estimate. So every unit above a size cut-off $a^*_d$ enters the sample with certainty (selection probability 1, weight 1, no sampling variance).
 
 Rule (v0.2): take-all = the largest units by water area among those of at least 2 ha (commercial scale), up to $\lfloor 0.1\,n_d \rfloor$ units (20 when $n_d = 200$). The take-all units count inside $n_d$. If fewer units reach 2 ha, take-all is smaller or empty (assumption A4).
+
+**Known property (v0.3 note).** The cap can leave units of 2 ha or more in the sampled strata. In the v0.2 synthetic district (simulated), 68 units reach 2 ha, 20 become take-all, and 48 stay in the top pond and tank size classes with a small inclusion probability. Each of them carries a large weight and a large share of production, so they drive the variance. The design keeps the 10% cap in v0.3 (changing it would change every sample and hide the effect of the calibration fix below). Whether to raise the cap is open decision 5 in section 17.
 
 Why not the v0.1 rule ("take-all when Neyman gives an inclusion probability above 1"): at 200 of 20,000 units a pond must be about 100 times the mean size before that happens, so the rule never fired in simulation. A fixed size cut-off is simple, auditable, and matches how departments already think about commercial farms.
 
@@ -289,7 +291,7 @@ Report Kish's weighting design effect, $deff_w = n\sum w_i^2 / (\sum w_i)^2$, in
 2. Sort units by predicted propensity and cut into 5 classes (quintiles) inside each district.
 3. Adjustment factor for class $c$: $\phi_c = \sum_{i \in c} w^{(0)}_i \,/\, \sum_{i \in c,\ \text{resp}} w^{(0)}_i$.
 4. If any $\phi_c > 2$, merge that class with its neighbour (this caps extreme weights; it replaces ad-hoc trimming).
-5. **Calibrate** the adjusted respondent weights $w^{(0)}_i\phi_{c(i)}$ so that, for each stratum $h$, the respondents reproduce the frame's known unit count $N_h$ and known total water area $A_h$. Use linear calibration (GREG weights) with the calibration factor bounded to $[0.3,\ 3]$ (iterate with truncation until the constraints hold or 20 iterations pass; record any stratum where they do not hold). If a stratum has fewer than 4 respondents, calibrate it to $N_h$ only. The result is $w^{(1)}_i$.
+5. **Calibrate** the adjusted respondent weights $w^{(0)}_i\phi_{c(i)}$ so that, for each stratum $h$, the respondents reproduce the frame's known unit count $N_h$ and known total water area $A_h$. Use linear calibration (GREG weights) with the calibration factor bounded to $[0.3,\ 3]$ (iterate with truncation until the constraints hold or 20 iterations pass; record any stratum where they do not hold). If a stratum has fewer than 8 respondents, calibrate it to $N_h$ only (v0.3; was 4). If a stratum calibrated to both $N_h$ and $A_h$ still misses a constraint after 20 iterations, repeat its calibration to $N_h$ only and record the fallback (v0.3; v0.2 kept the truncated factors). A stratum with no respondents gets no weights and is recorded. The result is $w^{(1)}_i$.
 
 **Why three variables.** A logistic model needs about 10 outcome events per parameter to be stable (Peduzzi et al. 1996). At 200 selected units and 85% response there are about 30 dropouts, so about 3 parameters. The v0.1 model (type, intensity, log area, distance and 9 block dummies, 14 parameters) had about 2 events per parameter; in simulation it removed only two thirds of the dropout bias (simulated: +6.1% with no adjustment, +2.3% after it).
 
@@ -474,6 +476,7 @@ For each estimator: relative bias, RMSE, 95% CI coverage, mean CI width.
 2. **Precision target** (A6): 7.5% RSE per district is a proposal, not a department figure.
 3. **Verification rate** (30%) and **rotation rate** (one third).
 4. **Pilot districts:** one high-production, one medium-intensity, one geographically distinct (challenge page). The final choice should come from the department's data.
+5. **Take-all cap** (section 4.4): keep 10% of $n_d$, or raise it so that fewer units of 2 ha or more stay in sampled strata. Not changed in v0.3. Test it in a later version, on new seeds.
 
 ---
 
@@ -493,6 +496,31 @@ The v0.1 simulation (exploratory, 1,000 replications, simulated; `results/REPORT
 | 8 | 15.4 | AC4: linearised vs bootstrap | AC4: bootstrap vs empirical SD | The primary variance must match the true sampling SD |
 
 **Readings adopted from the simulation build** (the doc was ambiguous; these become the rule): collapse (4.5) is applied before the minimum-5 rounding (5.2 step 3); phase-2 size is $m_h = \max(2, \mathrm{round}(0.3\,n'_h))$; take-all units count inside $n_d$; in S1 every phase-2 harvest is verified (A7 holds exactly).
+
+---
+
+## 19. Changes from v0.2 to v0.3 (2026-11-01, post-confirmation)
+
+The v0.2 confirmatory run (seeds 20261102 / 4417, simulated) met AC1 to AC7. It also showed a weakness: in 28.7% of S1 replications at least one stratum missed its calibration constraints, and in 77.5% a factor sat at a bound. The failures were in small tank strata (6 to 10 selected, about 5 respondents) and rarely in stratum 2 (`results/v0.2/REPORT.md` section 4, item 1). The v0.2 results stay as the confirmatory record. Nothing in them is re-tuned.
+
+| # | Section | v0.2 | v0.3 | Reason |
+|---|---|---|---|---|
+| 1 | 9 step 5 | Calibrate to $N_h$ and $A_h$ when a stratum has 4 or more respondents | Same, with 8 or more respondents; fewer gives $N_h$ only | Two constraints with $g \in [0.3, 3]$ cannot hold with about 5 respondents |
+| 2 | 9 step 5 | After 20 iterations, keep truncated factors (constraint missed) | Fall back to $N_h$ only for that stratum | The v0.2 rule left a stratum that matches neither constraint; the doc was silent (REPORT section 5, item 1) |
+| 3 | 4.4, 17 | Cap behaviour not stated | Stated; cap unchanged; open decision 5 | 48 of 68 units of 2 ha or more stay in sampled strata |
+
+Not changed: the frame, strata, allocation, sample size, propensity model, bootstrap, and the S4/S5 biases (no mitigation is simulated yet). The samples are the same kind as in v0.2; only the calibration step differs.
+
+**v0.3 check run (post-confirmation, not confirmatory).** Seeds fixed here before the run: `pop_seed = 20261103`, `master_seed = 5521`. 1,000 replications, S1 to S5. Both seeds are new. The run reports results as they come; nothing is tuned on them either.
+
+| # | Criterion (S1, simulated) |
+|---|---|
+| V1 | Share of replications in which any stratum ends with an unmet constraint it attempted (after the fallback) is at most 5%. Also report the v0.2-style share (any miss before fallback) and the share with a factor at a bound. |
+| V2 | The v0.2 criteria AC1 to AC5 hold again on the new seeds (coverage 93% to 97%, absolute bias below 1%, bootstrap SE within 10% of the empirical SD, RSE at most 7.5%). Judge them as a replication on a new district, not as a tuned result. |
+| V3 | S2 to S5 reported honestly, with the change against v0.2 (coverage, bias, RSE). |
+| V4 | Byte-identical rerun (AC7) still holds. |
+
+To separate the effect of the fix from the effect of a new district, the report also runs the **v0.2 rule (threshold 4, no fallback) on the new seeds**, using a config switch. Both runs use identical samples.
 
 ---
 

@@ -82,7 +82,9 @@ class Config:
     cal_g_lo: float = 0.3                   # [DOC] 9 step 5: calibration factor bounds
     cal_g_hi: float = 3.0                   # [DOC]
     cal_max_iter: int = 20                  # [DOC]
-    cal_min_resp: int = 4                   # [DOC] fewer respondents: calibrate to N_h only
+    cal_min_resp: int = 8                   # [DOC] v0.3 (was 4): fewer respondents -> calibrate to N_h only
+    cal_fallback: bool = True               # [DOC] v0.3: a stratum that still misses N_h/A_h redoes N_h only
+                                            # v0.2 rule on the same samples: cal_min_resp=4, cal_fallback=False
     cells_water_rich: int = 20              # [ASSUMPTION] "about 30 cells" split 20 / 10
     cells_other: int = 10                   # [ASSUMPTION]
 
