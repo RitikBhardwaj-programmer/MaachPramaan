@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "d32"
+version = "0.1.0"
+description = "NESFIC D-32 survey estimator and simulation (design.md v0.1)"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy",
+  "pandas",
+  "scipy",
+  "statsmodels",
+  "matplotlib",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "hypothesis"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
