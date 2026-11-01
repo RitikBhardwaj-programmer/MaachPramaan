@@ -1,0 +1,164 @@
+{
+  "label": "SIMULATED",
+  "seeds": {
+    "pop_seed": 20261104,
+    "master_seed": 6609,
+    "part_A": true
+  },
+  "limits": {
+    "recall": {
+      "duplicate": 0.9,
+      "seed": 0.8,
+      "gap": 0.8,
+      "x10": 0.7
+    },
+    "clean": {
+      "yield_outlier": 0.05,
+      "event_size": 0.08,
+      "duplicate": 0.08,
+      "diary_vs_verified": 0.08,
+      "any_event": 0.12
+    }
+  },
+  "results": {
+    "alpha_0.5": {
+      "reps": 200,
+      "recall": {
+        "duplicate": 1.0,
+        "seed": 1.0,
+        "gap": 1.0,
+        "x10": 0.6220006613756613
+      },
+      "clean_share": {
+        "yield_outlier": 0.0004486111111111111,
+        "event_size": 0.07075302160746873,
+        "seed_consistency": 0.0013,
+        "duplicate": 0.000151543201713787,
+        "diary_vs_verified": 0.08684747824707095,
+        "any_event": 0.1494978974372537
+      },
+      "x10_recall_se_over_reps": 0.0007923324519122258
+    },
+    "alpha_1": {
+      "reps": 200,
+      "recall": {
+        "duplicate": 1.0,
+        "seed": 1.0,
+        "gap": 1.0,
+        "x10": 0.7332473544973545
+      },
+      "clean_share": {
+        "yield_outlier": 0.0004486111111111111,
+        "event_size": 0.04872596598873344,
+        "seed_consistency": 0.0013,
+        "duplicate": 0.00022771151252281083,
+        "diary_vs_verified": 0.08684747824707095,
+        "any_event": 0.1290745418000053
+      },
+      "x10_recall_se_over_reps": 0.0007742496907959225,
+      "pass": {
+        "C1_duplicate": true,
+        "C1_seed": true,
+        "C1_gap": true,
+        "C1_x10": true,
+        "C2_yield_outlier": true,
+        "C2_event_size": true,
+        "C2_duplicate": true,
+        "C2_diary_vs_verified": false,
+        "C2_any_event": false
+      }
+    },
+    "alpha_3": {
+      "reps": 200,
+      "recall": {
+        "duplicate": 1.0,
+        "seed": 1.0,
+        "gap": 1.0,
+        "x10": 0.8810185185185185
+      },
+      "clean_share": {
+        "yield_outlier": 0.0004486111111111111,
+        "event_size": 0.019076525349765942,
+        "seed_consistency": 0.0013,
+        "duplicate": 0.00043704213059691626,
+        "diary_vs_verified": 0.08684747824707095,
+        "any_event": 0.10236518473460104
+      },
+      "x10_recall_se_over_reps": 0.0005671568685601236
+    }
+  },
+  "config": {
+    "pop_seed": 20261104,
+    "master_seed": 6609,
+    "n_listed": 20000,
+    "n_not_on_list": 1600,
+    "mean_area_ha": 0.17,
+    "pond_area_sigma": 1.0,
+    "tank_share": 0.02,
+    "tank_mean_area_ha": 1.0,
+    "tank_area_sigma": 0.8,
+    "nol_mean_area_ha": 0.09,
+    "nol_area_sigma": 0.8,
+    "assisted_share": 0.3,
+    "assisted_area_slope": 0.6,
+    "n_blocks": 10,
+    "dist_gamma_shape": 2.0,
+    "dist_gamma_scale": 4.0,
+    "n_cells": 1500,
+    "cell_clustering_sigma": 1.0,
+    "imagery_noise_sigma": 0.5,
+    "water_rich_share": 0.3,
+    "prod_pond_plain": 3.0,
+    "prod_pond_assisted": 5.5,
+    "prod_tank_plain": 3.5,
+    "prod_tank_assisted": 6.0,
+    "sigma_b": 0.0,
+    "prod_noise_sigma": 0.5,
+    "beta_diary_assisted": -0.1,
+    "beta_diary_plain": -0.1,
+    "rho_diary": 0.9,
+    "beta_recall": -0.25,
+    "rho_recall": 0.6,
+    "verify_prob": 1.0,
+    "max_events": 6,
+    "mean_response": 0.85,
+    "resp_b_logarea": 0.3,
+    "resp_b_assisted": 0.4,
+    "resp_b_tank": 0.3,
+    "resp_b_dist": -0.05,
+    "resp_block_sd": 0.4,
+    "dropout_gamma": 0.0,
+    "n_per_district": 200,
+    "n_size_classes": 3,
+    "hist_bins": 1000,
+    "n_min_stratum": 5,
+    "min_frame_stratum": 20,
+    "take_all_cap_frac": 0.1,
+    "take_all_min_area_ha": 2.0,
+    "plan_prod_pond_plain": 3.0,
+    "plan_prod_pond_assisted": 5.5,
+    "plan_prod_tank_plain": 3.5,
+    "plan_prod_tank_assisted": 6.0,
+    "phase2_rate": 0.3,
+    "phase2_min": 2,
+    "n_np_classes": 5,
+    "phi_cap": 2.0,
+    "logit_ridge": 1e-06,
+    "cal_g_lo": 0.3,
+    "cal_g_hi": 3.0,
+    "cal_max_iter": 20,
+    "cal_min_resp": 8,
+    "cal_fallback": true,
+    "takeall_phase2": false,
+    "rho_u": 0.6,
+    "trend": 0.03,
+    "k_max": 0.8,
+    "fayherriot": false,
+    "productivity": false,
+    "cells_water_rich": 20,
+    "cells_other": 10,
+    "e0_norm_productivity": 4.89,
+    "ci_level": 0.95,
+    "n_boot": 500
+  }
+}

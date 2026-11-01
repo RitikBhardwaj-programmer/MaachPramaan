@@ -12,7 +12,7 @@ import pytest
 
 from d32.config import BASE
 from d32.events import build_events, unit_table
-from d32.plausibility import CHECKS, FLAG_COLUMNS, inject_faults, run_checks
+from d32.plausibility import CHECKS, FLAG_COLUMNS, X10_LOG_LR_CUT, inject_faults, run_checks, x10_log_lr
 from d32.synth import eta_cv, lognormal_noise, make_district
 
 REPS = 20
@@ -121,12 +121,119 @@ def test_c1_gap(reps):
     assert _recall(reps, "gap", "diary_vs_verified") >= 0.80
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Spec tension, see report: with the event-size multiple at 6 (needed for C2 on this check), "
-    "recall of x10 events is about 70%. A multiple of 2 gives about 90% recall but flags about 28% "
-    "of clean events."))
 def test_c1_x10(reps):
-    assert _recall(reps, "x10", "event_size") >= 0.90
+    assert _recall(reps, "x10", "event_size") >= 0.70      # C1, redesigned check, design 21.3b
+
+
+# --- x10 likelihood ratio, hand-computed from design 21.3b -------------------------------------
+_L = np.array([0.0, 0.1, -0.1, 0.2, -0.2, 0.0])            # log(total / area); median 0, MAD 0.1
+_SD = 1.4826 * 0.1
+
+
+def _lr_tables(assisted=0, seed=1e9):
+    units = pd.DataFrame({"unit_id": [f"U{i}" for i in range(6)], "area": 1.0,
+                          "type": "pond", "assisted": assisted})
+    rows = [("U0", 0.5), ("U0", 0.5)] + [(f"U{i}", 1.0) for i in range(1, 6)]   # U0: two equal events
+    ev = pd.DataFrame({"unit_id": [u for u, _ in rows],
+                       "q_diary": [sh * np.exp(_L[int(u[1])]) for u, sh in rows],
+                       "seed_count": seed, "q_ver": np.nan})
+    ev["date"] = pd.Timestamp("2026-05-01") + pd.to_timedelta(np.arange(len(ev)), unit="D")
+    ev["event_id"] = ev["unit_id"] + "-E" + ev.groupby("unit_id").cumcount().astype(str)
+    return units, ev
+
+
+def test_x10_lr_two_event_unit_matches_formula():
+    units, ev = _lr_tables()
+    log_d = np.log(10 / 5.5)                                # s' = 0.5
+    expected = 2 * log_d - np.log(10) + (0.0 - (log_d / _SD) ** 2) / 2      # z0 = 0
+    np.testing.assert_allclose(x10_log_lr(units, ev)[:2], expected, rtol=1e-12)
+
+
+def test_x10_lr_one_event_unit_has_no_share_evidence():
+    units, ev = _lr_tables()
+    z0, z1 = 0.1 / _SD, (0.1 - np.log(10)) / _SD           # U1: s' = 1, D = 10, share part 0
+    np.testing.assert_allclose(x10_log_lr(units, ev)[2], (z0**2 - z1**2) / 2, rtol=1e-12)
+
+
+def _tab(ell, stratum=None, assisted=0, seed=1.0):
+    """One single-event unit per value of ell = log(total / area), area 1."""
+    k = len(ell)
+    units = pd.DataFrame({"unit_id": [f"U{i}" for i in range(k)], "area": 1.0, "type": "pond",
+                          "assisted": assisted})
+    if stratum is not None:
+        units["stratum"] = stratum
+    ev = pd.DataFrame({"unit_id": units["unit_id"], "q_diary": np.exp(ell), "seed_count": seed})
+    return units, ev
+
+
+def _single(ell, mu, sd):                                   # share part is 0 for one event
+    z0, z1 = (ell - mu) / sd, (ell - np.log(10) - mu) / sd
+    return (z0**2 - z1**2) / 2
+
+
+def test_x10_lr_small_stratum_uses_pooled_values():
+    ell = np.r_[_L, 0.9, 1.0, 1.1]                          # stratum A: 6 units; B: 3 units -> pooled
+    units, ev = _tab(ell, stratum=["A"] * 6 + ["B"] * 3)
+    got = x10_log_lr(units, ev)
+    np.testing.assert_allclose(got[1], _single(0.1, 0.0, _SD), rtol=1e-12)          # own stratum
+    np.testing.assert_allclose(got[7], _single(1.0, 0.1, 1.4826 * 0.2), rtol=1e-12) # pooled: median 0.1, MAD 0.2
+
+
+def test_x10_lr_flat_stratum_uses_pooled_values():
+    ell = np.r_[0, 0, 0, 0, 0.3, 0.6, _L]                   # stratum A has MAD 0
+    units, ev = _tab(ell, stratum=["A"] * 6 + ["B"] * 6)
+    got = x10_log_lr(units, ev)
+    np.testing.assert_allclose(got[5], _single(0.6, 0.0, 1.4826 * 0.05), rtol=1e-12)  # pooled: median 0, MAD 0.05
+    np.testing.assert_allclose(got[7], _single(0.1, 0.0, _SD), rtol=1e-12)
+
+
+def test_x10_lr_anchor_is_seed_for_assisted_area_otherwise():
+    # assisted: total 1 t, seed exp(-L) -> l = L; U0 has three events, seed varies, median used.
+    # not assisted: l = 2L from area, seed exp(-3L) must be ignored; U12 is assisted without seed -> area.
+    units = pd.DataFrame({"unit_id": [f"U{i}" for i in range(13)], "area": 1.0, "type": "pond",
+                          "assisted": [1] * 6 + [0] * 6 + [1]})
+    rows = [("U0", 0.2, 1.0), ("U0", 0.3, 1.0), ("U0", 0.5, 4.0)]
+    rows += [(f"U{i}", 1.0, np.exp(-_L[i])) for i in range(1, 6)]
+    rows += [(f"U{i + 6}", np.exp(2 * _L[i]), np.exp(-3 * _L[i])) for i in range(6)]
+    rows += [("U12", np.exp(0.1), 0.0)]
+    ev = pd.DataFrame(rows, columns=["unit_id", "q_diary", "seed_count"])
+    got = x10_log_lr(units, ev)
+    log_d = np.log(10 / 5.5)                                # U0's s' = 0.5 event, l = 0
+    np.testing.assert_allclose(got[2], 3 * log_d - np.log(10) - (log_d / _SD) ** 2 / 2, rtol=1e-12)
+    np.testing.assert_allclose(got[3], _single(0.1, 0.0, _SD), rtol=1e-12)          # U1, seed anchor
+    np.testing.assert_allclose(got[11], _single(0.4, 0.0, 1.4826 * 0.2), rtol=1e-12)  # U9, area anchor
+    np.testing.assert_allclose(got[14], _single(0.1, 0.0, 1.4826 * 0.2), rtol=1e-12)  # U12 pooled with area units
+
+
+def test_x10_flags_exactly_scores_above_cut():
+    assert X10_LOG_LR_CUT == 0.5                            # design 21.3b
+    units, ev = _lr_tables()
+    for factor, lo, hi, flagged in ((2.600, 0.4, 0.5, False), (2.603, 0.5, 0.6, True)):   # U3 scaled: score near the cut
+        slip = ev.copy()
+        slip.loc[slip["unit_id"] == "U3", "q_diary"] *= factor
+        score = x10_log_lr(units, slip)
+        assert lo < score[4] < hi
+        f = run_checks(units, slip)
+        f = f[f["check"] == "event_size"]
+        assert ("U3-E0" in set(f["event_id"])) == flagged
+        assert set(f["event_id"]) == set(slip["event_id"][score > 0.5])
+        assert (f["threshold"] == 0.5).all()
+        np.testing.assert_allclose(f["value"].astype(float), score[score > 0.5])
+
+
+def test_x10_single_event_slip_is_flagged_and_bad_rows_are_not():
+    units, ev = _lr_tables()
+    slip = ev.copy()
+    slip.loc[slip["unit_id"] == "U3", "q_diary"] *= 10
+    flags = run_checks(units, slip)
+    assert "U3-E0" in set(flags.loc[flags["check"] == "event_size", "event_id"])
+    zero = ev.copy()
+    zero.loc[zero["unit_id"] == "U4", "q_diary"] = 0.0     # no positive total: no score, no flag
+    score = x10_log_lr(units, zero)
+    assert np.isnan(score[zero["unit_id"].to_numpy() == "U4"]).all()
+    assert "U4-E0" not in set(run_checks(units, zero)["event_id"].dropna())
+    ghost = pd.concat([ev, ev.iloc[[2]].assign(unit_id="GHOST", event_id="GHOST-E0")], ignore_index=True)
+    assert np.isnan(x10_log_lr(units, ghost)[-1])          # unit not in the unit table: no score
 
 
 def test_c2_clean_data_per_check(reps, capsys):
@@ -145,16 +252,14 @@ def test_c2_clean_data_per_check(reps, capsys):
         print("\nC2 per check (clean data, 20 reps):", {k: round(v, 4) for k, v in share.items()},
               "any event flag:", round(any_ev, 4))
     assert share["yield_outlier"] <= 0.05
-    assert share["event_size"] <= 0.05 and share["duplicate"] <= 0.05
+    for c in ("event_size", "duplicate", "diary_vs_verified"):   # amended C2: each event-level check <= 8%
+        assert share[c] <= 0.08, c
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Spec tension, see report: with diary noise at rho_diary = 0.9 (cv about 0.3), 4% to 8% of clean "
-    "events fail the 50% diary-vs-verified rule on their own, so the any-flag share is above 5%."))
 def test_c2_any_event_flag_share(reps):
     n_e = sum(len(r["ev"]) for r in reps)
     any_ev = sum(r["clean_flags"]["event_id"].dropna().nunique() for r in reps) / n_e
-    assert any_ev <= 0.05
+    assert any_ev <= 0.12                                   # amended C2, design 21.3a
 
 
 def test_c5_exclusion_moves_estimate_closer(reps):

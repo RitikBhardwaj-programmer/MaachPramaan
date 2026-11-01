@@ -13,7 +13,7 @@ CHECKS = ["yield_outlier", "event_size", "seed_consistency", "duplicate", "diary
 
 MZ_THRESHOLD = 3.5        # [DOC] Iglewicz-Hoaglin
 MIN_STRATUM_UNITS = 5     # [ASSUMPTION] a stratum smaller than this gets no yield flags
-EVENT_SIZE_MULTIPLE = 6.0 # [ASSUMPTION] event size per ha above this multiple of the stratum median
+X10_LOG_LR_CUT = 0.5      # [DOC] 21.3b: 95th percentile of clean scores on the throw-away seeds, rounded
 SURVIVAL_UPPER = 0.9      # [ASSUMPTION] upper survival rate for the seed check
 WEIGHT_UPPER_KG = 1.5     # [ASSUMPTION] upper mean harvest weight (kg) for the seed check
 DUP_TOL = 0.05            # [DOC] same quantity within 5%
@@ -34,6 +34,56 @@ def _strata(units: pd.DataFrame) -> pd.Series:
 def _rows(unit_id, event_id, check, value, threshold) -> pd.DataFrame:
     return pd.DataFrame({"unit_id": unit_id, "event_id": event_id, "check": check,
                          "value": value, "threshold": threshold})
+
+
+def x10_log_lr(units: pd.DataFrame, events: pd.DataFrame) -> np.ndarray:
+    """log LR of "this event was entered x10" against "clean", per event row (design.md 21.3b).
+
+    Share part: n log D - log 10, D = 10 / (10 - 9 s'), s' the event's share of the unit total.
+    Total part: Gaussian test of log(total / anchor), anchor = stocked seed for assisted units
+    with a seed count, else area; centre and spread are the median and 1.4826 x MAD within
+    stratum and anchor type, pooled over the anchor type for small or flat groups.
+    NaN where the score cannot be formed (no positive total or anchor, no usable spread).
+    """
+    st = _strata(units)
+    ids = units["unit_id"].to_numpy()
+    area = pd.Series(units["area"].to_numpy(float), index=ids)
+    assisted = pd.Series(units["assisted"].to_numpy(bool) if "assisted" in units else False, index=ids)
+
+    uid = events["unit_id"].to_numpy()
+    q = events["q_diary"].to_numpy(float)
+    grp = events.groupby("unit_id")["q_diary"]
+    tot, n_ev = grp.sum(), grp.size()
+    T = tot.reindex(uid).to_numpy()
+    with np.errstate(divide="ignore", invalid="ignore"):
+        s = np.where(T > 0, q / T, np.nan)
+        log_d = np.log(10.0) - np.log(10.0 - 9.0 * s)
+    share = n_ev.reindex(uid).to_numpy() * log_d - np.log(10.0)
+
+    seed = events.groupby("unit_id")["seed_count"].median().reindex(tot.index)
+    use_seed = assisted.reindex(tot.index, fill_value=False).to_numpy() & (seed.to_numpy() > 0)
+    anchor = np.where(use_seed, seed.to_numpy(), area.reindex(tot.index).to_numpy())
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ell = pd.Series(np.log(tot.to_numpy() / anchor), index=tot.index)
+    keep = np.isfinite(ell.to_numpy())
+    ell = ell[keep]
+    kind = np.where(use_seed[keep], "seed", "area")
+    key = st.reindex(ell.index).astype(str).to_numpy() + "|" + kind
+
+    def centre_spread(by):
+        mu = ell.groupby(by).transform("median")
+        sd = 1.4826 * (ell - mu).abs().groupby(by).transform("median")
+        return mu, sd, ell.groupby(by).transform("size")
+
+    mu, sd, cnt = centre_spread(key)
+    p_mu, p_sd, p_cnt = centre_spread(kind)
+    small = (cnt < MIN_STRATUM_UNITS) | (sd <= 0)
+    mu, sd = mu.where(~small, p_mu), sd.where(~small, p_sd)
+    sd = sd.where((sd > 0) & ~(small & (p_cnt < MIN_STRATUM_UNITS)))
+
+    l, m, sdv = ell.reindex(uid).to_numpy(), mu.reindex(uid).to_numpy(), sd.reindex(uid).to_numpy()
+    z0, z1 = (l - m) / sdv, (l - log_d - m) / sdv
+    return share + (z0**2 - z1**2) / 2
 
 
 def unit_production_kg(events: pd.DataFrame) -> pd.Series:
@@ -66,15 +116,11 @@ def run_checks(units: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
         f = m[m.abs() > MZ_THRESHOLD]
         out.append(_rows(f.index, None, "yield_outlier", f.to_numpy(), MZ_THRESHOLD))
 
-    # 2. event size per ha as a multiple of the stratum median
-    ev_st = st.reindex(events["unit_id"]).to_numpy()
-    per_ha = events["q_diary"].to_numpy() / area.reindex(events["unit_id"]).to_numpy()
-    med = pd.Series(per_ha).groupby(ev_st).transform("median").to_numpy()
-    with np.errstate(divide="ignore", invalid="ignore"):
-        mult = np.where(med > 0, per_ha / med, 0.0)
-    hit = mult > EVENT_SIZE_MULTIPLE
+    # 2. event size: likelihood ratio of a x10 entry slip (design.md 21.3b)
+    score = x10_log_lr(units, events)
+    hit = score > X10_LOG_LR_CUT
     out.append(_rows(events["unit_id"].to_numpy()[hit], events["event_id"].to_numpy()[hit],
-                     "event_size", mult[hit], EVENT_SIZE_MULTIPLE))
+                     "event_size", score[hit], X10_LOG_LR_CUT))
 
     # 3. seed consistency: production above what the stocked seed can give at upper rates
     seed = events.groupby("unit_id")["seed_count"].median()

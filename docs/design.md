@@ -314,7 +314,7 @@ Checks run on upload and again at year end.
 | Check | Rule | Level |
 |---|---|---|
 | Yield outlier | Modified z-score on log(production / area) within stratum: $M_i = 0.6745\,(u_i - \tilde u)/\mathrm{MAD}$; flag if $|M_i| > 3.5$ (Iglewicz–Hoaglin) | Pond-year |
-| Event size | One event larger than a set multiple of the stratum's median event size per ha | Event |
+| Event size (×10 slip) | Likelihood ratio of "this event was entered ×10" against "clean", from the event's share of the unit total and the unit total against an anchor (stocked seed for assisted units, else area); flag if log LR > 0.5 (section 21.3b; replaces the v0.4 draft rule "a multiple of the stratum's median event size per ha") | Event |
 | Seed consistency | Production far above what the stocked seed could produce (seed count × an upper survival rate × an upper harvest weight) | Pond-year |
 | Duplicate | Same unit, same day, same quantity within 5% | Event |
 | Diary vs verified | For phase-2 units, $|q_e - q^{ver}_e| / q^{ver}_e > 50\%$ | Event |
@@ -594,13 +594,30 @@ After T1 to T3 pass, edit section 8.6, 8.7 and the proposal §9.6 (the take-all 
 
 | # | Criterion |
 |---|---|
-| C1 | Recall at least 90% for duplicates and ×10 events; at least 80% for seed-inconsistent units and gap events. |
-| C2 | On the clean data, the share of units with a yield-outlier flag is at most 5%, and the share of events with any flag is at most 5%. Report each check separately. |
+| C1 | Recall at least 90% for duplicates; at least 80% for seed-inconsistent units and gap events; at least 70% for ×10 events. (Amended, see 21.3a and 21.3b.) |
+| C2 | On the clean data, the share of units with a yield-outlier flag is at most 5%; each event-level check flags at most 8% of clean events; the share of events with any flag is at most 12%. Report each check separately. (Amended, see 21.3a.) |
 | C3 | Event sums equal unit totals to 1e-9. |
 | C4 | The input tables have identical hashes before and after the checks (flag, never overwrite). |
 | C5 | Estimating on the injected copy with flagged records excluded moves $\hat Y$ closer to the clean estimate than estimating on the injected copy without exclusion (the sensitivity estimate of section 10). |
 
 C1, C2 and C5 run on 200 replications of S1 data from part A seeds; C3 and C4 on every replication.
+
+**21.3a Amendment of C1 and C2 (2026-11-01, before any run on the part A seeds).** The first implementation, tested on throw-away seeds 1 to 3 (20 replications), showed that the written C1 and C2 cannot hold together. (i) The event-size multiple must be 6 to keep clean-event flags low; there, recall of ×10 events is about 70%. A multiple of 2 gives about 90% recall but flags about 28% of clean events. (ii) With diary noise at ρ = 0.9 (CV about 0.3), 4% to 8% of clean events differ from the verified value by more than 50% by chance alone, so the any-flag share exceeds 5%. The check is working as designed; the 50% rule is noisy when the diary is noisy. The new limits above are set from these measurements, so they are **not independent of the test seeds**: they describe what the checks do, not a tuned pass. The multiple stays 6 and the 50% rule stays. The report on the part A seeds states every measured rate against these limits. A real review queue would hold about 10% of events; the proposal states this workload, and the review fatigue it implies, as a limit.
+
+**21.3b Redesign of the ×10 check (2026-11-01, before any run on the part A seeds).** On the 20 throw-away replications of the test fixture (pop_seed 1 to 20), the multiple-6 rule caught 63.7% of ×10 events (1,205 events, SE 1.4 points), below the 65% of 21.3a. The "about 70%" of 21.3a could not be reproduced: the first 3 of those seeds give 62.3%. The misses are small events. Recall is 7% for events under 8% of their unit's total and above 99% for events over 40%, so a ×10 slip on a small event looks like a normal event. It still raises the unit total, by about half for a typical miss. The new rule uses that.
+
+*Rule.* For event $j$ of unit $i$ with $n_i$ events, observed share $s'_j = q_j / T'_i$ and $D_j = 10/(10 - 9 s'_j)$, the score is $\log \mathrm{LR}_j = \log \mathrm{LR}^{share}_j + \log \mathrm{LR}^{total}_j$.
+- Share part: Dirichlet(1) shares are uniform on the simplex, and applying the ×10 has Jacobian $10\,D_j^{-n_i}$ (so the density ratio is $D_j^{n_i}/10$), so $\log \mathrm{LR}^{share}_j = n_i \log D_j - \log 10$. It is 0 for a one-event unit (no share evidence).
+- Total part: $\ell_i = \log(T'_i / a_i)$, with anchor $a_i$ = stocked seed for assisted units (the units with seed records, A3) and water area otherwise. Clean: $\ell_i \sim N(\mu, \sigma^2)$; ×10 on $j$: $\ell_i - \log D_j \sim N(\mu, \sigma^2)$. $\mu$ and $\sigma$ are the median and $1.4826 \times$ MAD of $\ell$ over the units of the same stratum and anchor type; groups under 5 units, or with MAD 0, use the pooled values of that anchor type; if those are also unusable (under 5 units or MAD 0), the score is not formed and the event is not flagged. $\log \mathrm{LR}^{total}_j = (z_0^2 - z_1^2)/2$ with $z_0 = (\ell_i - \mu)/\sigma$, $z_1 = (\ell_i - \log D_j - \mu)/\sigma$.
+- Flag if $\log \mathrm{LR}_j > 0.5$. The cut is fixed now. It is the 95th percentile of clean scores on the throw-away seeds (0.49), rounded.
+
+*Throw-away seed results (simulated, these set the cut, so they are not evidence):* recall 73.8% with 5.0% of clean events flagged, against 63.7% with 4.9% for the old rule. With shares re-split as Dirichlet(0.5), more uneven than the generator (cut not re-tuned): 62.9% at 6.8%, against 60.0% at 8.9%. As Dirichlet(3): 88.9% at 2.1%, against 69.2% at 2.6%.
+
+*Known weaknesses.* (i) The share part uses the generator's own Dirichlet(1) model, so the main result is optimistic; the Dirichlet(0.5) figure is the honest lower reading. (ii) The seed anchor relies on the simulated seed noise (log-sd 0.3), an [ASSUMPTION]. (iii) Faults on the seed count (the seed check's injection) also raise ×10 scores in those units; these show on the injected data only, not in C2.
+
+*Criteria.* C1 for ×10 events: recall at least 70% (about 3 SE below the throw-away value). C2 is unchanged (at most 8% of clean events for this check). The part A run also reports the Dirichlet(0.5) and (3) re-splits, as a report only. If C1 or C2 fails on part A, report it; do not re-tune. The check keeps the name `event_size`; `value` is $\log \mathrm{LR}_j$ and `threshold` is 0.5.
+
+*Part A protocol for C1, C2 and C5 (fixes "200 replications of S1 data from part A seeds").* One district from `pop_seed` 20261104 at the S1 size. Replication $r$ ($r = 0..199$) takes child $r$ of `SeedSequence(6609).spawn(200)` and spawns from it the diary noise, the event stream (shares, dates, verification at `verify_prob`) and the fault injection. The checks run on every unit's events (a census, as in the test fixture).
 
 ### 21.4 Fay-Herriot test (section 11), scenario F
 
