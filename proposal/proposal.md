@@ -1,13 +1,13 @@
 # NESFIC 2026 — Solution Proposal for NESFIC-D-32
 
 **Challenge:** Scientific Sample Survey for Pond and Tank Aquaculture Production Estimation (Fishery Department, Assam)
-**Applicant:** [NAME] (solo applicant) · **Advisor:** [TO NAME — statistics faculty, if confirmed]
-**Working title:** [TO CHOOSE] — an open, reproducible survey engine for aquaculture production estimates
+**Applicant:** Ritik Bhardwaj (solo applicant), B.Tech. Information Technology, NIT Srinagar
+**Title:** Maach Pramaan ("fish proof") — an auditable sample survey for Assam's pond and tank fish production
 **Draft:** 0.3, 2026-11-02. Sections 3 and 9 are written from the simulation reports in `results/` (runs v0.2 to v0.5 and the Fay-Herriot run). Text in [brackets] is for the applicant to fill or confirm.
 
 > Drafting notes (delete before submission): follows the 12 components of the Uniform Solution Proposal Requirements (USPR). Portal field limits are not known yet (behind login); each section is written so it can be cut to its first paragraphs. All simulation numbers must stay labelled "simulated". No real Assam data has been used.
 
-**At a glance.** Assam's pond and tank production is now estimated as water area × one assumed productivity, with no margin of error. This proposal replaces that with a scientific sample survey: about 200 ponds per district drawn by an auditable random rule, a short phone diary for every harvest, and enumerators weighing the harvests on a subsample of farms to correct the diaries. The engine turns this into district totals with 95% confidence intervals that anyone can re-run from the published seed. On five simulated districts with known truth (no real data used), the estimate's average error (bias) was at most 0.7% in the base case, and its intervals held the truth in 93.6% to 96.1% of 1,000 repeats; recall alone under-counted by about 27%. Field forms, the engine, an audit log and a dashboard exist as a working prototype on simulated data.
+**At a glance.** Assam's pond and tank production is now estimated as water area × one assumed productivity, with no margin of error. Maach Pramaan replaces that with a scientific sample survey: about 200 ponds per district drawn by an auditable random rule, a short phone diary for every harvest, and enumerators weighing the harvests on a subsample of farms to correct the diaries. The engine turns this into district totals with 95% confidence intervals that anyone can re-run from the published seed. On five simulated districts with known truth (no real data used), the estimate's average error (bias) was at most 0.7% in the base case, and its intervals held the truth in 93.6% to 96.1% of 1,000 repeats; recall alone under-counted by about 27%. Field forms, the engine, an audit log and a dashboard exist as a working prototype on simulated data.
 
 ---
 
@@ -242,12 +242,11 @@ The pilot itself runs over one full reference year (April – March) after M7.
 
 | Role | Person | Expertise | Phases |
 |---|---|---|---|
-| Lead developer and survey methods | [NAME], [programme, institution] | Python, statistics, data engineering; built the engine and simulation | All |
-| Statistical advisor | [TO NAME — statistics faculty, if confirmed] | Survey sampling, small-area estimation | Design review, validation |
+| Lead developer and survey methods | Ritik Bhardwaj, B.Tech. Information Technology (2024–2028), NIT Srinagar | Python, statistics, data engineering; built the engine and simulation | All |
 | Field and domain partner | Directorate of Fisheries (as offered in the challenge) | Aquaculture practice, field operations | Requirements, field test, pilot |
 | Possible collaborators | DES Assam, ICAR-CIFRI (as named in the challenge, subject to department arrangements) | Official statistics, inland fisheries methodology | Review, cross-check |
 
-**Indicative manpower.** Development (Nov – May): 1 full-time developer, advisor 2–4 hours per month. Pilot (per district, one year): about 2 enumerators and 1 supervisor, sized from the verification workload [to confirm with department norms].
+**Indicative manpower.** Development (Nov – May): 1 full-time developer. Pilot (per district, one year): about 2 enumerators and 1 supervisor, 3 enumerators if diaries prove noisy and weighing doubles. Estimate: listing, monthly checks, weighing visits and year-end recall come to about 400 enumerator-days a year, against about 220 working days per enumerator; to be confirmed with department norms.
 
 **Critical specialist skills.** Survey sampling and variance estimation; field-protocol design for weighing; Assamese language review of forms.
 
@@ -402,7 +401,7 @@ FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World B
 
 **Basis of differentiation.** Proven statistical behaviour by simulation before field use, and reproducibility by design: committed seed, permanent random numbers, frozen frame.
 
-**IP and dependencies.** Released under an open-source licence [choose: Apache-2.0 or MIT] so the department owns and can maintain it. Dependencies: Python scientific stack, KoboToolbox/ODK, Streamlit, R `survey`/`sae` (all open source).
+**IP and dependencies.** Released under the Apache License 2.0, so the department can use, change and maintain it without licence fees; every contributor also grants the patent rights their code needs. Dependencies: Python scientific stack, KoboToolbox/ODK, Streamlit, R `survey`/`sae` (all open source).
 
 ---
 
@@ -419,6 +418,6 @@ FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World B
 | Diaries noisier than planned | Mid-year check raises the weighing rate (up to 80% of respondents) when the predicted error is above 7.5%; budget for up to about twice the planned weighing visits |
 | Real variation larger than planned | Sample re-sized from year-one data; intervals stay honest even if wider |
 | Small samples per block | Fay-Herriot estimates shown beside direct ones, marked experimental; in simulation they cut the mean squared block error by about 45%, but single blocks can be off by up to 10% until the variance-smoothing fix is tested |
-| Solo developer | Open code, design document and tests let others maintain it; advisor review |
+| Solo developer, no statistical advisor | Open code, design document and tests let others maintain it; each change gets an independent review before the run that tests it; statistical review by DES Assam or ICAR-CIFRI sought for the pilot |
 
 **Pilot validation (after development).** Three contrasting districts, as the challenge suggests (high-production, medium-intensity, geographically distinct), chosen from the department's data. About 200 farms per district, about 55 to 70 of them with weighed harvests (more if diaries prove noisy), plus about 30 grid cells per district for the coverage check (sizes to be confirmed from the real frame). Over one reference year, compare: the proposed estimate with its interval; the department's current figure; recall versus weighed amounts on the same farms (a direct measure of recall bias); and the measured share of ponds missing from the list. Success criteria are agreed with the department before the pilot starts.

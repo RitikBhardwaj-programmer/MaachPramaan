@@ -2,7 +2,7 @@
   "v": 4,
   "createdOnFiles": {"v": 1, "at": "2026-11-02T12:00:00Z"},
   "lists": "css",
-  "title": "NESFIC D-32 pitch deck",
+  "title": "Maach Pramaan pitch deck",
   "order": ["cover", "problem", "answer", "how", "roles", "evidence", "repeat", "stress", "trust", "status", "pilot", "close"],
   "sections": {
     "s1": {"description": "The problem and the answer in one line", "start": "cover"},

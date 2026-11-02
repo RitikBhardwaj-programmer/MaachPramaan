@@ -7,4 +7,4 @@ These files are the artifact's data files (`deck.json` for order and fonts, `sli
 
 All result numbers come from `results/*/REPORT.md` and are SIMULATED.
 
-Before presenting, fill the placeholders: `[NAME]`, `[TO NAME]`, `[contact]`, the licence (`[Apache-2.0 or MIT]`) and `[to confirm]` (enumerator count).
+No placeholders remain on the slides. Project title: Maach Pramaan.
