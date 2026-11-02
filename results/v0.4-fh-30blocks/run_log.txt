@@ -1,0 +1,11 @@
+   block scenario  mse_direct  mse_fh  mse_fh_bm  cov_direct    cov_fh  cov_fh_bm  gamma_mean  n_resp_mean  ratio_fh  ratio_fh_bm    reps  F1_ratio_fh_bm  ratio_fh_unbenchmarked  F2_cov_fh_bm  F3_max_bench_err  F4_share_unadj_reml_zero  sigma_v2_mean
+30   ALL       S1         NaN     NaN        NaN    0.836624  0.822966        NaN    0.340306          NaN       NaN          NaN  1000.0        0.278376                0.367494       0.93456      5.626665e-16                     0.113       1.495998
+  scenario estimator  reps  truth_t_simulated  rel_bias  rel_bias_mc_se    rmse_t  rel_rmse  coverage  coverage_mc_se  mean_ci_width_t  rel_ci_width  rse_empirical  rse_mean_estimated
+0       S1        E0  1000         13952.1027    0.1804          0.0000 2517.2529    0.1804       NaN             NaN              NaN           NaN         0.0000                 NaN
+1       S1        E1  1000         13952.1027   -0.2757          0.0021 3961.3744    0.2839    0.0700          0.0081        3649.0216        0.2615         0.0679              0.0915
+2       S1        E2  1000         13952.1027   -0.1294          0.0016 1931.9060    0.1385    0.3530          0.0151        3073.8532        0.2203         0.0493              0.0641
+3       S1        E3  1000         13952.1027   -0.0004          0.0021  931.1336    0.0667    0.9570          0.0064        3869.6273        0.2774         0.0668              0.0689
+4       S1     E3lin  1000         13952.1027   -0.0004          0.0021  931.1336    0.0667    0.9590          0.0063        3961.3024        0.2839         0.0668              0.0705
+5       S1         P  1000             3.9718    0.0001          0.0021    0.2645    0.0666    0.9600          0.0062           1.0948        0.2756         0.0666              0.0684
+6       S1      Plin  1000             3.9718    0.0001          0.0021    0.2645    0.0666    0.9590          0.0063           1.1215        0.2824         0.0666              0.0701
+AC4 (S1): {'n': 1000, 'empirical_sd_t': 931.5838527432599, 'mean_boot_se_t': 960.4318401855948, 'mean_lin_se_t': 983.1933388470616, 'boot_over_empirical': 1.0309666031215392, 'lin_over_empirical': 1.0553997216158544}

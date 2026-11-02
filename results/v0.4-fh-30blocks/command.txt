@@ -1,0 +1,1 @@
+python -m d32.simulate --reps 1000 --v04 --fh --scenarios S1 --pop-seed 20261105 --master-seed 7703 --workers 12 --sigma-b 0.15 --n-blocks 30 --out results/v0.4-fh-30blocks
