@@ -6,6 +6,7 @@ from scipy import stats
 
 from .config import Config
 from .estimate import CellSample, ListSample, e3_estimate
+from .select import phase2_size
 
 
 def _pooled_fill(s2: np.ndarray) -> tuple[np.ndarray, int]:
@@ -37,11 +38,14 @@ def lin_var_e3(s: ListSample, est: dict, cells: CellSample) -> dict:
         v = s.ver & (s.stratum == h)
         if v.sum() >= 2:
             s2y[h] = _s2(s.y[v])
-            s2e[h] = _s2(s.y[v] - R * s.x[v])
+            s2e[h] = _s2(s.y[v] - R * s.x[v]) if s.xv is None else _s2(s.yv[v] - R * s.xv[v])   # F1: 22.1
             s2u[h] = _s2(s.y[v] - Rrec * s.r[v])
     s2y, nfb = _pooled_fill(s2y)
     s2e, _ = _pooled_fill(s2e)
     s2u, _ = _pooled_fill(s2u)
+    if s.xv is not None:            # F1 (22.1): Y_L - Y ~ (X / sum w2 xv) * sum w2 (yv - R xv)
+        wxv = float(np.sum(w2[s.ver] * s.xv[s.ver]))
+        s2e = s2e * (est["X"] / wxv) ** 2 if wxv > 0 else s2e
     N = s.N_h.astype(float)
     ok = n1 > 0
     t1 = np.where(ok, N**2 * (1 / np.where(ok, n1, 1) - 1 / N) * s2y, 0.0)
@@ -63,7 +67,32 @@ def lin_var_e3(s: ListSample, est: dict, cells: CellSample) -> dict:
     V = V_L + V_NL
     H_ver = int((m > 0).sum())
     df = float(m.sum() - H_ver)
-    return {"V": V, "V_L": V_L, "V_NL": V_NL, "df": df, "var_fallbacks": nfb}
+    return {"V": V, "V_L": V_L, "V_NL": V_NL, "df": df, "var_fallbacks": nfb,
+            "t2_h": t2, "n1_h": n1, "s2e_h": s2e}
+
+
+def adaptive_rate(s: ListSample, est: dict, lv: dict, nu_grid, m_min: int, target: float,
+                  r_plan: float, q: float) -> float:
+    """F3 (design.md 22.3): smallest nu in nu_grid whose predicted RSE is at most target; the last grid
+    value if none is. Each stratum's phase-2 term is recomputed with the effective size of m current units
+    plus a = m' - m top-up units that carry a share q of a full unit, m_eff = (m + q a)^2 / (m + q^2 a),
+    m' = phase2_size(n'_h, nu). The denominator is Y * r_plan / R: Y = R * K with K free of R, so the
+    stop decision does not depend on the interim ratio (no stopping-rule bias)."""
+    N = s.N_h.astype(float)
+    n1, s2e = lv["n1_h"], lv["s2e_h"]
+    m0 = np.array([(s.ver & (s.stratum == h)).sum() for h in range(s.H)], float)
+    base = lv["V"] - float(lv["t2_h"].sum())
+    denom = est["Y"] * r_plan / est["R"]
+    for nu in nu_grid:
+        mp = np.array([phase2_size(int(k), nu, m_min) if k > 0 else 0 for k in n1], float)
+        a = np.maximum(mp - m0, 0.0)
+        tot = m0 + q * a
+        m = np.where(tot > 0, tot**2 / np.where(tot > 0, m0 + q**2 * a, 1), 0.0)
+        ok = (m > 0) & (n1 > 0)
+        t2 = np.where(ok, N**2 * (1 / np.where(ok, m, 1) - 1 / np.where(ok, n1, 1)) * s2e, 0.0)
+        if np.sqrt(max(base + float(t2.sum()), 0.0)) / denom <= target:
+            return float(nu)
+    return float(nu_grid[-1])
 
 
 def ci_t(est: float, V: float, df: float, level: float) -> tuple[float, float, float]:

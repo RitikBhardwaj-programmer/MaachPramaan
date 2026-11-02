@@ -24,6 +24,9 @@ class ListSample:
     A_h: np.ndarray | None = None    # frame water area per stratum (ha)
     tiebreak: np.ndarray | None = None   # PRN per selected unit; orders equal propensities (design.md 20.1)
     block: np.ndarray | None = None      # development block per selected unit (Fay-Herriot, design.md 21.4)
+    xv: np.ndarray | None = None         # diary sum over the unit's verified events (F1, design.md 22.1)
+    yv: np.ndarray | None = None         # weighed sum over the same events; None = v0.4 ratio
+    rdrop: np.ndarray | None = None      # bool: dropout who answered the recall (F2, 22.2); None = v0.4 weights
 
     @property
     def H(self) -> int:
@@ -131,24 +134,55 @@ def phase2_weights(w0, w1, stratum, resp, ver, H) -> np.ndarray:
     return np.where(ver, w1 * f[stratum], 0.0)
 
 
-def ratio_total(w1, w2, x, y, r, resp, ver):
+def ratio_total(w1, w2, x, y, r, resp, ver, xv=None, yv=None):
+    """X, R, R_rec. With xv/yv (F1, design.md 22.1) R uses verified events only and
+    R_rec = R * sum(w2 x) / sum(w2 r) over the verified units."""
     X = float(np.sum(w1[resp] * x[resp]))
+    wr = float(np.sum(w2[ver] * r[ver]))
+    if xv is not None:
+        wyv = float(np.sum(w2[ver] * yv[ver]))
+        wxv = float(np.sum(w2[ver] * xv[ver]))
+        wx = float(np.sum(w2[ver] * x[ver]))
+        R = wyv / wxv if wxv > 0 else np.nan
+        Rrec = R * wx / wr if wr > 0 else np.nan
+        return X, R, Rrec
     wy = float(np.sum(w2[ver] * y[ver]))
     wx = float(np.sum(w2[ver] * x[ver]))
-    wr = float(np.sum(w2[ver] * r[ver]))
     R = wy / wx if wx > 0 else np.nan
     Rrec = wy / wr if wr > 0 else np.nan
     return X, R, Rrec
 
 
+def dropout_recall_weights(w0, stratum, resp, rdrop, H) -> np.ndarray:
+    """F2 (design.md 22.2): double sampling for nonresponse. Recall dropouts carry w0 * d_h with
+    d_h = sum_drop(w0) / sum_rdrop(w0); in a stratum with no recall dropout the dropouts' weight goes
+    to its respondents. Units that are neither get 0."""
+    drop = ~resp
+    sd = np.bincount(stratum, weights=w0 * drop, minlength=H)
+    sr = np.bincount(stratum, weights=w0 * rdrop, minlength=H)
+    sp = np.bincount(stratum, weights=w0 * resp, minlength=H)
+    has = sr > 0
+    d = np.where(has, sd / np.where(has, sr, 1), 0.0)
+    f = np.where(has | (sp <= 0), 1.0, (sp + sd) / np.where(sp > 0, sp, 1))
+    return np.where(resp, w0 * f[stratum], np.where(rdrop, w0 * d[stratum], 0.0))
+
+
 def e3_estimate(s: ListSample, w0: np.ndarray, cells: CellSample, cw: np.ndarray, cfg: Config,
                 ph2_mult: np.ndarray | None = None) -> dict:
     """Proposed estimator: two-phase combined ratio + propensity classes + not-on-list domain.
-    ph2_mult (bootstrap only, design.md 21.1): per-unit rescaling of the phase-2 weights w2."""
-    wa, cls, phi = nonresponse_weights(w0, s.resp, s.Z, cfg.n_np_classes, cfg.phi_cap, cfg.logit_ridge,
-                                       s.tiebreak)
+    ph2_mult (bootstrap only, design.md 21.1): per-unit rescaling of the phase-2 weights w2.
+    s.rdrop (F2, 22.2) replaces the propensity classes by double sampling of dropouts; s.xv/s.yv (F1, 22.1)
+    give the matched-event ratio."""
+    if s.rdrop is not None:
+        covered = s.resp | s.rdrop
+        wa = dropout_recall_weights(w0, s.stratum, s.resp, s.rdrop, s.H)
+        cls, phi = np.zeros(w0.size, int), np.where(covered, wa / w0, 0.0)
+    else:
+        covered = s.resp
+        wa, cls, phi = nonresponse_weights(w0, s.resp, s.Z, cfg.n_np_classes, cfg.phi_cap, cfg.logit_ridge,
+                                           s.tiebreak)
     if s.area is not None and s.A_h is not None:
-        g, cal = calibrate_detail(wa, s.stratum, s.area, s.N_h, s.A_h, s.resp, cfg)
+        g, cal = calibrate_detail(wa, s.stratum, s.area, s.N_h, s.A_h, covered, cfg)
     else:                                   # no frame totals supplied: classes only
         g, cal = np.ones_like(wa), {"miss_before": [], "fallback": [], "unmet_after": [], "zero_resp": []}
     cal_failed = cal["miss_before"]
@@ -156,12 +190,16 @@ def e3_estimate(s: ListSample, w0: np.ndarray, cells: CellSample, cw: np.ndarray
     w2 = phase2_weights(w0, w1, s.stratum, s.resp, s.ver, s.H)
     if ph2_mult is not None:
         w2 = w2 * ph2_mult
-    X, R, Rrec = ratio_total(w1, w2, s.x, s.y, s.r, s.resp, s.ver)
+    X, R, Rrec = ratio_total(w1, w2, s.x, s.y, s.r, s.resp, s.ver, s.xv, s.yv)
     YL = R * X
+    YD = 0.0
+    if s.rdrop is not None:                 # recall dropouts: R_rec * sum(w1 r)
+        YD = Rrec * float(np.sum(w1[s.rdrop] * s.r[s.rdrop]))
+        YL = YL + YD
     Hhat = float(np.sum(cw * cells.z))
     YNL = Rrec * Hhat
     nol_units = float(np.sum(cw * cells.n_nol))
-    out = {"Y": YL + YNL, "YL": YL, "YNL": YNL, "X": X, "R": R, "Rrec": Rrec, "H": Hhat,
+    out = {"Y": YL + YNL, "YL": YL, "YNL": YNL, "YD": YD, "X": X, "R": R, "Rrec": Rrec, "H": Hhat,
            "nol_units": nol_units, "w1": w1, "w2": w2, "classes": cls, "phi": phi, "g": g,
            "cal_failed": cal_failed, "cal": cal}
     if cells.za is not None and s.A_h is not None:      # design.md 8.8: frame area + not-on-list area

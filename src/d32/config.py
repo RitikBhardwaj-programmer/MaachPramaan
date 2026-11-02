@@ -94,6 +94,16 @@ class Config:
     k_max: float = 0.8                      # [DOC] v0.4 (21.5) upper clip of the composite weight K
     fayherriot: bool = False               # [DOC] v0.4 (21.4): block estimates (direct, FH, benchmarked); needs bootstrap
     productivity: bool = False             # [DOC] v0.4 (21.2): also estimate P = Y/A (adds P columns); OFF = v0.3
+    matched_ratio: bool = False            # [DOC] v0.5 (22.1, F1): R from verified events only; OFF = v0.4
+    dropout_recall: bool = False           # [DOC] v0.5 (22.2, F2): recall dropouts stand for all dropouts
+    recall_resp_dropout: float = 0.70      # [ASSUMPTION] owner choice 2026-11-01: dropouts answering the recall
+    recall_drop_shift: float = 0.0         # [ASSUMPTION] S4x: extra relative recall error of dropouts (A9' fails)
+    adaptive_phase2: bool = False          # [DOC] v0.5 (22.3, F3): raise nu at mid-year if predicted RSE > target
+    rse_target: float = 0.075              # [DOC] AC5
+    nu_grid: tuple = (0.30, 0.40, 0.50, 0.60, 0.70, 0.80)   # [ASSUMPTION] cap 0.80
+    topup_after_mid: float = 0.5           # [ASSUMPTION] share of a top-up unit's events after the interim
+    r_plan: float = 1 / 0.9                # [DOC] planning true/diary ratio (beta_diary = -0.10), F3 denominator
+    verify_eta_slope: float = 0.0          # [ASSUMPTION] S5x: logit slope of verification on log diary error
     cells_water_rich: int = 20              # [ASSUMPTION] "about 30 cells" split 20 / 10
     cells_other: int = 10                   # [ASSUMPTION]
 
@@ -124,6 +134,8 @@ SCENARIOS: dict[str, dict] = {
     "S3": {"beta_diary_assisted": -0.05, "beta_diary_plain": -0.20},
     "S4": {"dropout_gamma": 0.8},
     "S5": {"verify_prob": 0.75},
+    "S4x": {"dropout_gamma": 0.8, "recall_drop_shift": -0.10},     # v0.5 stress (22.4), report only
+    "S5x": {"verify_prob": 0.75, "verify_eta_slope": 2.0},
 }
 
 

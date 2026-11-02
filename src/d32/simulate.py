@@ -19,10 +19,12 @@ from .config import BASE, SCENARIOS, Config, scenario_config
 from .design import build_design
 from .estimate import (CellSample, ListSample, design_weights, e0_estimate, e1_estimate, e2_estimate,
                        e3_estimate, kish_deff, kish_deff_factors)
-from .select import phase2_subsample, prn_values, rep_streams, select_smallest
+from scipy.optimize import brentq
+
+from .select import phase2_size, phase2_subsample, prn_values, rep_streams, select_smallest
 from .synth import District, eta_cv, lognormal_noise, make_district, response_probability
 from .fayherriot import fay_herriot
-from .variance import (block_list_totals, bootstrap_e3, ci_t, lin_var_e1, lin_var_e2, lin_var_e3,
+from .variance import (adaptive_rate, block_list_totals, bootstrap_e3, ci_t, lin_var_e1, lin_var_e2, lin_var_e3,
                        lin_var_p)
 
 EST = ["E0", "E1", "E2", "E3"]          # E3 interval = bootstrap (primary); E3lin = linearised cross-check
@@ -75,6 +77,26 @@ def _scen_ctx(name: str, ov: tuple = ()):
     }
 
 
+def verify_probabilities(eta: np.ndarray, mean: float, slope: float) -> np.ndarray:
+    """S5x (design.md 22.4): per-unit event verification probability expit(a + slope * log eta),
+    a chosen so the mean over the selected units is `mean`."""
+    le = np.log(eta)
+    f = lambda a: float(np.mean(1 / (1 + np.exp(-(a + slope * le))))) - mean
+    a = brentq(f, -30, 30)
+    return 1 / (1 + np.exp(-(a + slope * le)))
+
+
+def _verify_events(k: int, p: float, rng, after_mid: float | None = None) -> float:
+    """Share of a unit's production in verified events: Dirichlet(1) shares over k events, each verified
+    with probability p; for a top-up unit (F3) only events after the interim (probability after_mid)."""
+    share = rng.dirichlet(np.ones(k))
+    if after_mid is None:
+        b = rng.random(k) < p
+    else:
+        b = (rng.random(k) < after_mid) & (rng.random(k) < p)
+    return float(np.sum(share * b))
+
+
 def run_rep(args) -> list[dict]:
     rep, scen_names, do_boot, ov = args
     dist, design, Z, cell_g, nol = _base_ctx(ov)
@@ -103,7 +125,11 @@ def run_rep(args) -> list[dict]:
     for name in scen_names:
         sc = _scen_ctx(name, ov)
         cfg = sc["cfg"]
-        s0, s1, s2, s3, s4, s5 = rep_streams(cfg0.master_seed, rep)
+        # children 6-8 are new in v0.5 (22.5); spawn(9) leaves children 0-5 unchanged
+        s0, s1, s2, s3, s4, s5, s6, s7, s8 = rep_streams(cfg0.master_seed, rep, k=9)
+        v05 = cfg.matched_ratio or cfg.dropout_recall or cfg.adaptive_phase2
+        if cfg.adaptive_phase2 and not cfg.matched_ratio:   # top-up units are partly verified: needs F1
+            raise ValueError("adaptive_phase2 requires matched_ratio (design.md 22.3)")
         eta = lognormal_noise(s0.standard_normal(n_sel), sc["cv_diary"])
         xi = lognormal_noise(s0.standard_normal(n_sel), sc["cv_recall"])
         xi_nol = lognormal_noise(s0.standard_normal(nol_y.size), sc["cv_recall"])
@@ -111,18 +137,20 @@ def run_rep(args) -> list[dict]:
         x_all = ysel * (1 + beta_d) * eta
         r_all = ysel * (1 + cfg.beta_recall) * xi
         resp = s1.random(n_sel) < sc["p_resp"][sel]
+        if cfg.recall_drop_shift != 0.0:                    # S4x: dropouts recall worse (22.4)
+            r_all = np.where(resp, r_all, r_all * (1 + cfg.recall_drop_shift))
+        p_ver = np.full(n_sel, cfg.verify_prob)
+        if cfg.verify_eta_slope != 0.0:                     # S5x (22.4)
+            p_ver = verify_probabilities(eta, cfg.verify_prob, cfg.verify_eta_slope)
         ver = phase2_subsample(stratum, resp, N_h.size, cfg.phase2_rate, cfg.phase2_min, s2)
         y_obs = np.full(n_sel, np.nan)
+        xv, yv = np.zeros(n_sel), np.zeros(n_sel)
         for i in np.where(ver)[0]:
-            k = int(ev[i])
-            share = s3.dirichlet(np.ones(k))
-            b = s3.random(k) < cfg.verify_prob
-            sv = float(np.sum(share * b))
+            sv = _verify_events(int(ev[i]), p_ver[i], s3)
             y_obs[i] = ysel[i] * sv + x_all[i] * (1 - sv)   # unverified events fall back to the diary
+            xv[i], yv[i] = x_all[i] * sv, ysel[i] * sv
         x = np.where(resp, x_all, np.nan)
-        ls = ListSample(stratum, N_h, w0, resp, ver, x, y_obs, r_all, Z[sel],
-                        area=listed["area"].values[sel], A_h=design.strata["A_h"].values,
-                        tiebreak=prn[sel], block=listed["block"].values[sel] if cfg.fayherriot else None)
+        rdrop = (~resp & (s6.random(n_sel) < cfg.recall_resp_dropout)) if cfg.dropout_recall else None
         r_nol = nol_y * (1 + cfg.beta_recall) * xi_nol
         cz = np.bincount(nol_cell, weights=r_nol, minlength=cfg0.n_cells)
         cn = np.bincount(nol_cell, minlength=cfg0.n_cells).astype(float)
@@ -130,6 +158,35 @@ def run_rep(args) -> list[dict]:
         if cfg.productivity:
             cza = np.bincount(nol_cell, weights=nol["area"].values, minlength=cfg0.n_cells)[csel]
         cs = CellSample(cell_g[csel], C_g, c_g.astype(float), cz[csel], cn[csel], cza)
+
+        def _list_sample(ver_mask):
+            return ListSample(stratum, N_h, w0, resp, ver_mask, x, y_obs, r_all, Z[sel],
+                              area=listed["area"].values[sel], A_h=design.strata["A_h"].values,
+                              tiebreak=prn[sel], block=listed["block"].values[sel] if cfg.fayherriot else None,
+                              xv=xv if cfg.matched_ratio else None, yv=yv if cfg.matched_ratio else None,
+                              rdrop=rdrop)
+
+        ls = _list_sample(ver)
+        nu, n_topup = cfg.phase2_rate, 0
+        if cfg.adaptive_phase2:                             # F3 (22.3): interim decision, then top-up
+            e3i = e3_estimate(ls, w0, cs, cs.cw, cfg)
+            nu = adaptive_rate(ls, e3i, lin_var_e3(ls, e3i, cs), cfg.nu_grid, cfg.phase2_min, cfg.rse_target,
+                               cfg.r_plan, cfg.topup_after_mid)
+            if nu > cfg.phase2_rate:
+                ver = ver.copy()
+                for h in range(N_h.size):
+                    pool = np.where(resp & (stratum == h) & ~ver)[0]
+                    add = phase2_size(int((resp & (stratum == h)).sum()), nu, cfg.phase2_min) \
+                        - int((ver & (stratum == h)).sum())
+                    if add <= 0 or pool.size == 0:
+                        continue
+                    for i in s7.choice(pool, size=min(add, pool.size), replace=False):
+                        sv = _verify_events(int(ev[i]), p_ver[i], s8, cfg.topup_after_mid)
+                        y_obs[i] = ysel[i] * sv + x_all[i] * (1 - sv)
+                        xv[i], yv[i] = x_all[i] * sv, ysel[i] * sv
+                        ver[i] = True
+                        n_topup += 1
+                ls = _list_sample(ver)
 
         row = {"scenario": name, "rep": rep, "truth": truth}
         row["E0_est"] = e0_estimate(frame_area, cfg.e0_norm_productivity)
@@ -139,7 +196,8 @@ def run_rep(args) -> list[dict]:
         V, df = lin_var_e1(ls)
         row["E1_se"], row["E1_lo"], row["E1_hi"] = ci_t(row["E1_est"], V, df, cfg.ci_level)
         e3 = e3_estimate(ls, w0, cs, cs.cw, cfg)
-        row["E2_est"] = e2_estimate(ls, e3["w1"])
+        w1_e2 = e3["w1"] if rdrop is None else e3_estimate(replace(ls, rdrop=None), w0, cs, cs.cw, cfg)["w1"]
+        row["E2_est"] = e2_estimate(ls, w1_e2)          # E2 keeps the propensity-class weights
         V, df = lin_var_e2(ls)
         row["E2_se"], row["E2_lo"], row["E2_hi"] = ci_t(row["E2_est"], V, df, cfg.ci_level)
         lv = lin_var_e3(ls, e3, cs)
@@ -169,6 +227,9 @@ def run_rep(args) -> list[dict]:
                    V_L=lv["V_L"], V_NL=lv["V_NL"], R_hat=e3["R"], Rrec_hat=e3["Rrec"],
                    YNL_hat=e3["YNL"], undercov_hat=e3["nol_units"] / (e3["nol_units"] + N_h.sum()),
                    n_np_classes=int(np.unique(e3["classes"]).size))
+        if v05:
+            row.update(nu_final=nu, n_ver_topup=n_topup, n_drop=int((~resp).sum()),
+                       n_drop_recall=int(rdrop.sum()) if rdrop is not None else 0, YD_hat=e3["YD"])
         if cfg.takeall_phase2:
             row["ta_phase2_skipped"] = len(bp["ta_skipped"]) if bp is not None else 0
         if cfg.productivity:
@@ -388,8 +449,13 @@ def main(argv=None):
     ap.add_argument("--sigma-b", type=float, default=None, help="block effect sd on productivity (Config.sigma_b)")
     ap.add_argument("--n-blocks", type=int, default=None, help="blocks per district (Config.n_blocks)")
     ap.add_argument("--v04", action="store_true", help="shorthand for --takeall-phase2 --productivity")
+    ap.add_argument("--v05", action="store_true",
+                    help="--v04 plus F1 matched-event ratio, F2 dropout recall, F3 adaptive rate (design.md 22)")
     a = ap.parse_args(argv)
     overrides = {}
+    if a.v05:
+        a.v04 = True
+        overrides.update(matched_ratio=True, dropout_recall=True, adaptive_phase2=True)
     if a.takeall_phase2 or a.v04:
         overrides["takeall_phase2"] = True
     if a.fh:

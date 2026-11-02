@@ -1,0 +1,1 @@
+python -m d32.simulate --reps 1000 --v05 --scenarios S1,S2,S3,S4,S5,S4x,S5x --pop-seed 20261107 --master-seed 9931 --workers 12 --out results/v0.5

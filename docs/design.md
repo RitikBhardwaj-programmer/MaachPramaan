@@ -664,7 +664,49 @@ A second implementation of E3 point estimates and the Rao–Wu bootstrap in R, i
 
 ### 21.8 Not in v0.4
 
-Changing the take-all cap (open decision 5), the S4 mitigation (dropout recall comparison), the separate-ratio fallback test, and an S5 mitigation. They stay listed as limits.
+Changing the take-all cap (open decision 5), the S4 mitigation (dropout recall comparison), the separate-ratio fallback test, and an S5 mitigation. They stay listed as limits. (The S4 and S5 mitigations are now specified in section 22.)
+
+## 22. Design v0.5: fixes for S2, S4 and S5 (specification before code, 2026-11-01)
+
+**Status: specified before any v0.5 code or run.** Part A (`results/v0.4`, simulated) met every S1 criterion, but three scenarios stayed weak: S5 bias −2.42% with coverage 89.4%, S4 bias +3.39%, S2 RSE 11.5%. The owner asked for fixes (2026-11-01) and chose (a) an adaptive verification rate for S2 and (b) a 70% recall response among dropouts for S4 [ASSUMPTION]. The rules of sections 18 to 21 hold: criteria first, nothing tuned on a used seed, failures reported.
+
+**Causes (from the code).** S5: an unverified event of a verified unit enters the unit's "verified" total at its diary value, so $R = \sum w_2 y / \sum w_2 x$ mixes true and diary values and is pulled toward 1; diaries under-report, so $\hat Y$ is low. S4: response depends on the unit's yield shock (MNAR); propensity classes use frame variables only and cannot see it. S2: not a defect (coverage 93.7%); the phase-2 term $N_h^2(1/m_h - 1/n'_h)s^2_{e,h}$ grows with diary noise and only more verification lowers it.
+
+### 22.1 F1: matched-event ratio (S5)
+
+For each verified unit keep two sums over its **verified events only**: $x^v_i$ (diary) and $y^v_i$ (weighed). Then $R = \sum_{ver} w_2 y^v / \sum_{ver} w_2 x^v$ and $R_{rec} = R \cdot \sum_{ver} w_2 x / \sum_{ver} w_2 r$ (true/recall = true/diary × diary/recall). A verified unit with no verified event adds zero to both sums. The linearised phase-2 residual is $y^v - R x^v$, and since $\hat Y_L - Y \approx (X/\sum w_2 x^v)\sum w_2 (y^v - R x^v)$ its variance is multiplied by $(X/\sum_{ver} w_2 x^v)^2$ (about $1/\bar p^2$, $\bar p$ the verified share of the diary). When every event is verified, $x^v = x$ and $y^v = y$, so R is the old R. **Assumption A7′** (replaces A7 for bias): the verified share of a unit's diary does not depend on that unit's diary error, both for which events inside a unit get verified and for how much of each unit gets verified. Unverified events are still counted and reported.
+
+### 22.2 F2: recall of dropouts, double sampling for nonresponse (S4)
+
+Dropouts already get the end-of-year recall (A9, check a). Each dropout answers it with probability 0.70 [ASSUMPTION], at random within the stratum (**A9″**). The recall dropouts stand for all dropouts of their stratum (Hansen–Hurwitz double sampling for nonresponse): base weights become $w_0$ for respondents and $w_0 \cdot d_h$ for recall dropouts, with $d_h = \sum_{drop,h} w_0 / \sum_{recall\,drop,h} w_0$. In a stratum with dropouts but no recall dropout, the dropouts' weight goes to that stratum's respondents (factor $\sum_{resp \cup drop,h} w_0 / \sum_{resp,h} w_0$, the old ignorability). Propensity classes are not used under F2. Calibration (section 9 step 5, v0.3 rule) then runs on the covered set (respondents plus recall dropouts). Estimator: $\hat Y_L = R \sum_{resp} w_1 x + R_{rec} \sum_{recall\,drop} w_1 r$. The bootstrap re-runs this whole step, so $d_h$ varies by replicate. The phase-2 subsample and its weights stay among respondents. **Assumption A9′:** the recall error of dropouts is like that of respondents ($R_{rec}$ comes from verified respondents). The linearised variance does **not** include the recall-dropout term; under v0.5, E3lin is a rough cross-check and the bootstrap stays primary.
+
+*Change from the approved plan, before any code:* the plan put recall dropouts into the propensity classes with respondents. That leaves the 30% of dropouts without recall represented mostly by respondents, so roughly 30% of the S4 bias would remain (an estimate, not measured). Double sampling removes it under A9″.
+
+### 22.3 F3: adaptive verification rate (S2)
+
+Start with $\nu = 0.30$ as now. At an interim point (mid-year), compute $\hat Y$ and the linearised variance from the initial verified units. The predicted variance at rate $\nu'$ replaces each stratum's phase-2 term: $V(\nu') = V - \sum_h t_{2,h}(m_h) + \sum_h t_{2,h}(m^{eff}_h)$, where the $a_h = m'_h - m_h$ top-up units ($m'_h = $ `phase2_size`$(n'_h, \nu')$) carry a share $q = 0.5$ of a full unit, so $m^{eff}_h = (m_h + q a_h)^2/(m_h + q^2 a_h)$ (an approximation from expected shares). Choose the smallest $\nu' \in \{0.30, 0.40, \dots, 0.80\}$ with $\sqrt{V(\nu')}/D \le 7.5\%$; the cap is 0.80 [ASSUMPTION]. The denominator is $D = \hat Y \, r_{plan}/\hat R$ with the planning ratio $r_{plan} = 1/0.9$ (diary bias −10%, 15.1): under F1, $\hat Y = \hat R \cdot K$ with $K$ free of $\hat R$, so the stop decision does not depend on the interim ratio. (Dividing by $\hat Y$ itself would stop high estimates and top up low ones, a stopping-rule bias.) F3 needs F1; the code refuses F3 without it. Top-up units are a simple random sample from the remaining respondents of each stratum. They are verified from mid-year on: each event falls after mid-year with probability 0.5 [ASSUMPTION], then is verified as usual; F1 handles the partly verified units. *Simplification:* the interim uses the initial units' full-year pairs; the simulated diary error is per unit, so half-year pairs carry the same ratio. The bootstrap does not replay the interim decision; R3 coverage tests whether that matters.
+
+### 22.4 Stress scenarios (report only)
+
+- **S4x** = S4, and dropouts' recall is a further 10% low (breaks A9′).
+- **S5x** = S5 with the event verification probability per unit $p_i = \mathrm{expit}(a + 2\log\eta_i)$, $a$ set so the mean over the selected units is 0.75: units whose diary under-reports more are verified less (breaks A7′).
+
+### 22.5 Criteria (part D, simulated, all three fixes on)
+
+| # | Criterion |
+|---|---|
+| R1 | S5: absolute relative bias below 1%; bootstrap coverage 93% to 97%. |
+| R2 | S4: absolute relative bias below 1%; bootstrap coverage 93% to 97%. |
+| R3 | S2: empirical RSE at most 7.5%; coverage 93% to 97%. Report mean $\nu$ and verified units against v0.4 (the cost in visits). If the cap binds and RSE stays above 7.5%, R3 is not met. |
+| R4 | S1: AC1 to AC5 hold. Report S1 verified units (what adaptivity costs where it is not needed). |
+| R5 | S3, S4x and S5x reported with an honest reading (AC6 style). |
+| Z1 | With all v0.5 switches off, reps 0 to 29 on the part A seeds reproduce the matching rows of `results/v0.4/replications.csv` exactly (identity check, not tuning). |
+
+New draws (recall answer, top-up selection, top-up event timing and S5x) come from `rep_streams` children 6 to 8, so children 0 to 5 and every v0.4 draw stay unchanged.
+
+**22.6 Amendments after the independent review (2026-11-02, before any part D run).** A read-only review of the first v0.5 code ran Monte Carlo checks on throw-away seeds 51 to 60 only. It found: (i) F3 divided by the interim $\hat Y$, which gave a stopping-rule bias (+0.5 points in S2, measured); (ii) the F1 phase-2 variance term lacked the $(X/\sum w_2 x^v)^2$ factor (linearised SE / empirical SD 0.91 in S5, measured); (iii) the F3 prediction treated top-up units as fully verified; (iv) A7′ was worded too narrowly. Sections 22.1 and 22.3 above now carry the fixes. These change the method, not a tuned number: no criterion, cut or cap moved. Also noted, not changed: in take-all strata the Rao–Wu bootstrap does not resample, so the recall-answer draw adds no variance there (about 2% of production, negligible); the phase-1 and $R_{rec}$ parts of the linearised variance still use the observed unit total, which mixes verified and diary values (minor); the S4 bias under F2 sits at +0.6% to +1.5% on the review seeds, partly a small-sample ratio bias of $R_{rec}$ that shrinks with $m$, so R2 may be narrow. The review also expects R3 to fail: S2 RSE about 9.5% at a mean $\nu$ of 0.60 (measured on throw-away seeds); this is reported, not tuned.
+
+**Seeds.** Pilot (wiring and timing only; every parameter above is fixed): throw-away `pop_seed` 41 to 43, about 30 replications. **Part D (confirmation): `pop_seed = 20261107`, `master_seed = 9931`**, 1,000 replications, S1 to S5 plus S4x and S5x. If any criterion fails on part D, report it; do not re-tune.
 
 ---
 
