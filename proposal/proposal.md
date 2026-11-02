@@ -271,14 +271,18 @@ Recall alone under-counts by about a quarter, and a diary alone by about an eigh
 
 ### 9.3 Stress tests
 
-| Scenario | What goes wrong | E3 bias | Interval coverage | Reading |
-|---|---|---|---|---|
-| S2 | Diaries are noisier (correlation with truth 0.7 instead of 0.9) | +1.62% | 96.0% | Intervals stay honest but widen: RSE 11.7%. Expected fix (inference, not simulated): more verified units or a larger sample |
-| S3 | Diary under-reporting differs by group (−5% and −20%) | +0.66% | 96.1% | One ratio still gives an unbiased total |
-| S4 | Farmers drop out when their yield is poor | +3.97% | 95.7% | **Bias is real.** Frame variables cannot see a yield shock. Mitigation: compare the recall of dropouts with that of respondents; not simulated yet |
-| S5 | Only 75% of harvests on verification farms are weighed | −1.92% | 93.1% | **At the bottom of the band.** Mitigation: announce harvests a day ahead; report the verified share |
+The first column is the confirmatory v0.2 run. The second is design v0.5 (three fixes written into the design before the run; new district and new seeds, 1,000 repeats each; `results/v0.5/REPORT.md`). All numbers are simulated.
 
-I report these whether or not they pass. S4 and S5 show where the design needs field discipline.
+| Scenario | What goes wrong | v0.2: bias / coverage | v0.5: bias / coverage | Reading |
+|---|---|---|---|---|
+| S2 | Diaries are noisier (correlation with truth 0.7 instead of 0.9) | +1.62% / 96.0%, RSE 11.7% | +0.25% / 94.6%, **RSE 8.3%** | Intervals stay honest. v0.5 raises verification mid-year when the predicted error is too high (up to 80% of respondents); RSE falls from 11.7% to 8.3% but **does not reach the 7.5% target**, and verification visits more than double. A noisy diary is a cost question |
+| S3 | Diary under-reporting differs by group (−5% and −20%) | +0.66% / 96.1% | +0.12% / 95.8% | One ratio still gives an unbiased total |
+| S4 | Farmers drop out when their yield is poor | **+3.97%** / 95.7% | **+0.55%** / 96.1% | **Fixed.** Dropouts still answer the year-end recall (70% assumed); their recall, corrected by the weighed/recall ratio, stands for all dropouts (double sampling for non-response) |
+| S5 | Only 75% of harvests on verification farms are weighed | **−1.92%** / 93.1% | **+0.22%** / 94.6% | **Fixed.** The weighed/diary ratio now uses only the harvests that were both recorded and weighed |
+| S4x (stress) | As S4, and dropouts recall 10% worse | n/a | −0.11% / 95.3% | The S4 fix tolerates this |
+| S5x (stress) | Farms that under-report are weighed less often | n/a | **−4.15% / 86.9%** | **Fails, as expected.** No formula can fix weighing that avoids the under-reporters; it needs unannounced spot checks and a per-farm verified share |
+
+I report these whether or not they pass. S2 and S5x show where the design needs money and field discipline rather than statistics.
 
 ### 9.4 Honest record
 
@@ -286,6 +290,7 @@ I report these whether or not they pass. S4 and S5 show where the design needs f
 2. **Fix, then test on new data.** The fixes were written into the design document before any new run (section 18 of the design). The confirmatory run used a new synthetic district and new seeds, and nothing was tuned on them. Result: all seven criteria met in the base case.
 3. **A later change, and its cost.** The confirmatory run showed that the area-calibration step fails in about 29% of repeats, in small tank strata. Design v0.3 changed that step. On a third district (new seeds, labelled post-confirmation, not confirmatory), the change removed every unmet calibration constraint (35.9% to 0.0% on identical samples) and cut base-case bias from +0.55% to +0.09%. It also **lowered interval coverage**: 93.6% in the base case (inside the band, 0.6 points above its lower edge) and 90.7% in S5 (outside). We report both numbers. The takeaway is that the method is sound but its intervals have little margin when verification is incomplete, so the pilot must track the verified share.
 4. **Which result is confirmatory.** In the exploratory run, the bootstrap interval was adopted as the main interval after the results were seen, so its 96.4% coverage there is post hoc. Only the v0.2 run, with the bootstrap fixed in advance, is confirmatory.
+5. **Fixing the weak scenarios (v0.5).** S4, S5 and S2 were fixed in the design first, with pass criteria, before any run. An independent review on throw-away seeds then found four faults in the first code, among them a stopping-rule bias in the mid-year rule. These were fixed before the confirmation run. On a new district, the S4 and S5 fixes pass, the base case still meets every criterion (coverage 95.3%, bias +0.10%, RSE 6.99%), and S2 misses its precision target (8.3% against 7.5%). The cost is extra weighing: about 70 weighed farms per district instead of 55 in the base case.
 
 ### 9.5 Reproducibility and software quality
 
@@ -301,6 +306,7 @@ I report these whether or not they pass. S4 and S5 show where the design needs f
 - Coverage is checked on one synthetic population per run. The v0.3 follow-up shows that a different district moves coverage by one to two points.
 - The interval leaves out one small source of variance: which of the largest (take-all) farms get weighed. An independent code review found this gap. It is recorded in the design document (section 20.2) with two options to close it. The effect is probably small (inference, not tested): the bootstrap standard error matched the real spread within 3% in the base case.
 - The pilot, not the simulation, decides whether farmers keep diaries and whether harvests are announced.
+- The v0.5 fixes rest on stated assumptions: weighing does not follow a farm's diary error; dropouts recall like respondents; about 70% of dropouts answer the year-end recall. The stress tests show the first is critical (bias −4.2% when it fails) and the second is not (−0.1% with a 10% recall shift). The pilot measures all three.
 
 ### 9.7 Prior work
 
@@ -350,8 +356,9 @@ FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World B
 | Risk | Mitigation |
 |---|---|
 | Frame lacks stable IDs or linkable scheme/seed records | Engine builds and freezes IDs; stratify by size and type only if linkage fails |
-| Farmers stop keeping diaries | Two-minute form, monthly checks, dropout weighting and calibration; dropout reported openly |
-| Harvests on verification farms not announced | Unverified events counted and reported; simulation shows the effect |
+| Farmers stop keeping diaries | Two-minute form, monthly checks; dropouts still answer the year-end recall, which stands for all dropouts (removes the yield-related bias in simulation); dropout reported openly |
+| Harvests on verification farms not announced | Ratio uses only harvests both recorded and weighed (removes the bias in simulation); unverified events counted; unannounced spot checks, because weighing that avoids under-reporting farms still biases the total |
+| Diaries noisier than planned | Mid-year check raises the weighing rate (up to 80% of respondents) when the predicted error is above 7.5%; budget for up to about twice the planned weighing visits |
 | Real variation larger than planned | Sample re-sized from year-one data; intervals stay honest even if wider |
 | Small samples per block | Fay-Herriot estimates shown beside direct ones, marked experimental |
 | Solo developer | Open code, design document and tests let others maintain it; advisor review |
