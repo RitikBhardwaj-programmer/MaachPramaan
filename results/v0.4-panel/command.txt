@@ -1,0 +1,1 @@
+python -m d32.panel --reps 1000 --pop-seed 20261106 --master-seed 8815 --workers 12 --rho-u 0.6 --out results/v0.4-panel

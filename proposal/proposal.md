@@ -145,7 +145,7 @@ A warning appears as a note when a value looks wrong (for example one harvest ab
 | Dashboard | First version built (Streamlit) on simulated output: estimates with intervals, quality tiles, coverage over repeats, run record | Flag queue and district filter not yet connected |
 | Seed commitment and hash-chained audit log | Coded: seed commit and reveal, frame hash, append-only hash-chained log | Unit tests (`tests/test_audit.py`) |
 | Fay-Herriot block estimates | Coded and tested in simulation; experimental | Section 9.5 |
-| Rotating panel and composite estimator | Coded with unit tests; simulation run not yet done | Section 9.7 |
+| Rotating panel and composite estimator | Coded and tested in simulation; no precision gain yet | Section 9.5 |
 
 No real Assam data has been used. The prototype is shown on simulated data and will be rebuilt on the department's frame when it is available.
 
@@ -175,7 +175,7 @@ No real Assam data has been used. The prototype is shown on simulated data and w
 - **Uncertainty:** Rao–Wu rescaled bootstrap re-running the whole pipeline, including which of the largest farms are weighed; 95% intervals with a t multiplier.
 - **Productivity:** production ÷ water area (t/ha), with its own interval.
 - **Sub-district:** Fay-Herriot small-area model for development blocks, shown beside direct estimates (experimental in the pilot).
-- **Over time:** composite estimator using the overlap between years.
+- **Over time:** one third of the sample rotates each year, so each farm keeps a diary for about three years; a composite estimator using the overlap is tested but not yet relied on (section 9.5).
 
 **Data flow.** Frame (department) → frozen and hashed → selection list → forms on phones → sync to Kobo/ODK server → nightly export → engine (checks, flags, estimates) → dashboard and run records → audit log.
 
@@ -274,6 +274,7 @@ Four estimators are compared on the same samples: area × a single productivity 
 | v0.3 | Follow-up: calibration fallback (post-confirmation) | 20261103 / 5521 | `results/v0.3` |
 | v0.4 | Take-all variance and productivity; data-quality checks | 20261104 / 6609 | `results/v0.4`, `results/v0.4-plausibility` |
 | v0.4 FH | Fay-Herriot block estimates | 20261105 / 7703 | `results/v0.4-fh` |
+| v0.4 panel | Rotating panel over three years | 20261106 / 8815 | `results/v0.4-panel` |
 | v0.5 | Fixes for the weak scenarios | 20261107 / 9931 | `results/v0.5` |
 
 ### 9.2 Main result (base case S1)
@@ -331,11 +332,13 @@ Each harvest record is checked, and a doubtful one goes to a review queue with i
 
 False alarms on clean records were low for each rule (0.02% to 4.9%), except the diary-vs-weighed check: it flagged **8.7% of clean harvests against an 8% limit**, and all rules together 12.9% against 12%. Both limits are **not met** and were not re-tuned. In practice the review queue would hold about one harvest in eight. The ×10 check misses about a quarter of slips, mostly on small harvests, where a tenfold value still looks normal.
 
-### 9.5 Block estimates (Fay-Herriot, experimental)
+### 9.5 Block estimates and the rotating panel (experimental)
 
 District samples are too small for direct block estimates (about 18 farms per block). The Fay-Herriot model (a small-area model that blends each block's own noisy estimate with a prediction from block features) was tested on a district with real differences between blocks (v0.4 estimator; `results/v0.4-fh`). Against the direct block estimate it cut the mean squared error to **0.55** (pass mark 0.85), with **95.0%** interval coverage, and it did no harm when blocks do not differ (0.52). All five criteria were met.
 
 The run also found a defect that the criteria do not catch. The step that smooths each block's variance uses the block's own estimate, so a block that comes out low by chance is trusted more. Before the final scaling to the district total, block estimates came out 4.7% low on average (26% with 30 smaller blocks). After it, single blocks were still off by up to 10%. The fix (smoothing without the block's own estimate, plus a per-block bias criterion) is listed for the next version and not yet tested. Block estimates therefore stay **experimental**, shown beside the direct estimates.
+
+**Rotating panel (three years, `results/v0.4-panel`).** The composite estimator, which combines this year's estimate with last year's plus the change measured on farms in both samples, stayed unbiased (−0.4% or less) with 94% to 95% coverage and did no harm. But it gave almost no gain: year-3 error 0.983 of the direct estimate's, against a target of 0.95 (**not met**). The rotation rule also missed its own limit: about 9% of farms stayed in the sample more than three years in a row. The panel stays in the design for continuity and to spread the diary burden, not for precision; rotation by explicit groups is listed for the next version.
 
 ### 9.6 Honest record
 
@@ -345,7 +348,7 @@ The run also found a defect that the criteria do not catch. The step that smooth
 4. **Which result is confirmatory.** In the exploratory run, the bootstrap interval was adopted as the main interval after the results were seen, so its 96.4% coverage there is post hoc. Only the v0.2 run, with the bootstrap fixed in advance, is confirmatory.
 5. **Fixing the weak scenarios (v0.5).** S4, S5 and S2 were fixed in the design first, with pass criteria, before any run. An independent review on throw-away seeds then found four faults in the first code, among them a stopping-rule bias in the mid-year rule. These were fixed before the confirmation run. On a new district, the S4 and S5 fixes pass, the base case still meets every criterion (coverage 95.3%, bias +0.10%, RSE 6.99%), and S2 misses its precision target (8.3% against 7.5%). The cost is extra weighing: about 70 weighed farms per district instead of 55 in the base case.
 6. **A gap found by review, then closed.** An independent code review found that the interval left out which of the largest (take-all) farms get weighed. The fix was specified with three tests (design section 21.1); all three pass, and base-case coverage with the fix is 94.6% on a new district.
-7. **Checks that fail their own limits.** The diary-vs-weighed check raises more false alarms than its limit allows at full district size (section 9.4), and the block-estimate run found a bias that its criteria missed (section 9.5). Both are reported, not re-tuned.
+7. **Checks that fail their own limits.** The diary-vs-weighed check raises more false alarms than its limit allows at full district size (section 9.4), the block-estimate run found a bias that its criteria missed, and the rotating panel missed its gain and time-in-sample limits (section 9.5). All are reported, not re-tuned.
 
 ### 9.7 Reproducibility and software quality
 
@@ -354,7 +357,7 @@ The run also found a defect that the criteria do not catch. The step that smooth
 - **140 automated tests pass.** They cover selection, allocation, take-all, calibration (including the fallback), hand-computed ratios and variances, the v0.5 fixes, the data-quality checks, Fay-Herriot, the rotating panel and the audit log. Deliberately broken versions of the v0.5 code (7 of 7) are caught by the tests.
 - **Independent review.** Read-only reviews of the estimator code found two faults in v0.3 and four in the first v0.5 code; each was fixed before the run that tested it.
 - **Field forms.** All five XLSForms pass ODK Validate. The Assamese labels are machine-drafted and need a native-speaker check before field use.
-- **Not yet done:** the rotating-panel simulation run (code and unit tests exist); a paired check of the take-all variance fix on identical samples; an independent cross-check in R (`survey`); field testing with farmers.
+- **Not yet done:** a paired check of the take-all variance fix on identical samples; an independent cross-check in R (`survey`); field testing with farmers.
 
 ### 9.8 Limits
 
@@ -394,7 +397,7 @@ FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World B
 | Area × fixed productivity | No error estimate; ignores management differences | Probability sample with confidence intervals |
 | Yearly recall surveys | Recall bias; missed partial harvests | Per-harvest diary corrected by weighing |
 | List-only sampling | Silent undercoverage | Area-frame check measures and corrects it |
-| Fresh sample every year | Noisy year-to-year change | Rotating panel with composite estimator |
+| Fresh sample every year | Noisy year-to-year change; no continuity | Rotating panel: two thirds of farms carry over, each keeps a diary about three years |
 | Satellite pond mapping (e.g. WorldFish, Bangladesh) | Area, not production; small ponds are hard to see at 10 m | Imagery only guides the coverage check |
 
 **Basis of differentiation.** Proven statistical behaviour by simulation before field use, and reproducibility by design: committed seed, permanent random numbers, frozen frame.
