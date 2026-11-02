@@ -1,0 +1,17 @@
+{
+  "v": 4,
+  "createdOnFiles": {"v": 1, "at": "2026-11-02T12:00:00Z"},
+  "lists": "css",
+  "title": "NESFIC D-32 pitch deck",
+  "order": ["cover", "problem", "answer", "how", "roles", "evidence", "repeat", "stress", "trust", "status", "pilot", "close"],
+  "sections": {
+    "s1": {"description": "The problem and the answer in one line", "start": "cover"},
+    "s2": {"description": "How the survey works and who does what", "start": "how"},
+    "s3": {"description": "Simulated evidence: accuracy, repeats and stress tests", "start": "evidence"},
+    "s4": {"description": "Trust, prototype status, pilot and asks", "start": "trust"}
+  },
+  "faces": {
+    "source-serif-4": {"family": "Source Serif 4", "href": "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"},
+    "ibm-plex-sans": {"family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"}
+  }
+}

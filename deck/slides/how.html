@@ -1,0 +1,40 @@
+<section id="how" data-transition="fade" style="background:#F6F5F0;color:#12303A;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:56px">
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;line-height:1.1">How the survey works</h2>
+<div style="display:flex;align-items:stretch;gap:0px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFC;padding:32px;border:2px solid #1F5F7A;border-radius:16px">
+<p style="font-size:24px;font-weight:600;color:#B8621B">1 · FREEZE</p>
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">Pond list and seed</h3>
+<p style="font-size:24px;line-height:1.35;color:#4A5568">List hashed; seed committed before selection</p>
+</div>
+<x-connector style="width:48px" head="end"></x-connector>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFC;padding:32px;border:2px solid #1F5F7A;border-radius:16px">
+<p style="font-size:24px;font-weight:600;color:#B8621B">2 · SELECT</p>
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">~200 ponds per district</h3>
+<p style="font-size:24px;line-height:1.35;color:#4A5568">Groups by type, size, intensity; largest farms all taken</p>
+</div>
+<x-connector style="width:48px" head="end"></x-connector>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFC;padding:32px;border:2px solid #1F5F7A;border-radius:16px">
+<p style="font-size:24px;font-weight:600;color:#B8621B">3 · RECORD</p>
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">Diary per harvest</h3>
+<p style="font-size:24px;line-height:1.35;color:#4A5568">Phone form, under two minutes; monthly check</p>
+</div>
+<x-connector style="width:48px" head="end"></x-connector>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFC;padding:32px;border:2px solid #1F5F7A;border-radius:16px">
+<p style="font-size:24px;font-weight:600;color:#B8621B">4 · WEIGH</p>
+<h3 style="font-size:32px;font-weight:600;line-height:1.2">Subsample checked</h3>
+<p style="font-size:24px;line-height:1.35;color:#4A5568">Enumerators weigh harvests on ~30% of farms, more if needed</p>
+</div>
+<x-connector style="width:48px" head="end"></x-connector>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#12303A;padding:32px;border:2px solid #12303A;border-radius:16px">
+<p style="font-size:24px;font-weight:600;color:#E9A35A">5 · ESTIMATE</p>
+<h3 style="font-size:32px;font-weight:600;line-height:1.2;color:#F6F5F0">Total ± interval</h3>
+<p style="font-size:24px;line-height:1.35;color:#BFD8D5">Diary total × weighed/diary ratio, plus missing ponds</p>
+</div>
+</div>
+<div style="display:flex;gap:32px">
+<p style="flex:1;font-size:28px;line-height:1.4;color:#4A5568"><b style="color:#12303A">Missing ponds:</b> 1 km² grid cells are fully listed to measure and add ponds the list misses.</p>
+<p style="flex:1;font-size:28px;line-height:1.4;color:#4A5568"><b style="color:#12303A">Dropouts:</b> farmers who stop the diary still answer a year-end recall, which stands in for them.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#5E6B73">Field capture on KoboToolbox / ODK Collect (offline); estimation engine in open-source Python</p>
+<aside>Five steps. The innovation is not any one step but the chain: a probability sample, per-harvest diaries, and weighing that measures the diary error instead of assuming it. The interval comes from a bootstrap that re-runs the whole pipeline.</aside>
+</section>
