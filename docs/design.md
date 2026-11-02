@@ -261,7 +261,7 @@ Residuals for verified units: $e_i = y_i - \hat R x_i$. For the list-frame total
 
 $$\hat V(\hat Y_L) = \underbrace{\sum_h N_h^2\left(\frac{1}{n'_h} - \frac{1}{N_h}\right) s^2_{y,h}}_{\text{phase 1: sampling units}} + \underbrace{\sum_h N_h^2\left(\frac{1}{m_h} - \frac{1}{n'_h}\right) s^2_{e,h}}_{\text{phase 2: diary error not removed by } \hat R}$$
 
-$s^2_{y,h}$ and $s^2_{e,h}$ are sample variances computed on the verified units of stratum $h$ (only they have $y_i$). This is the standard double-sampling-for-ratio variance (Cochran ch. 12; Särndal et al. ch. 9), stratified. Take-all strata add nothing to the first term but do add to the second if they are subsampled for verification.
+$s^2_{y,h}$ and $s^2_{e,h}$ are sample variances computed on the verified units of stratum $h$ (only they have $y_i$). This is the standard double-sampling-for-ratio variance (Cochran ch. 12; Särndal et al. ch. 9), stratified. Take-all strata add nothing to the first term but do add to the second if they are subsampled for verification. Since v0.4 the bootstrap (section 8.7) carries this second term for take-all strata too (section 21.1).
 
 **Status (v0.2): cross-check only.** This formula treats the respondents as a simple random subsample inside each stratum. It has no term for the variation that the nonresponse adjustment and calibration (section 9) add, and it takes $s^2_{y,h}$ from about 4 verified units per stratum. In the v0.1 simulation it was about 12% below the true SD (simulated), and its intervals covered 90.5%. It is still reported, because a reader can check it by hand.
 
@@ -272,7 +272,7 @@ Why primary: it carries every estimation step, including the nonresponse and cal
 
 **Confidence interval:**
 $$\hat Y_d \pm t_{0.975,\ df}\ \sqrt{\hat V_{boot}(\hat Y_d)}, \qquad df = m_d - H_d$$
-($m_d$ verified units minus the number of strata with verified units). A $t$ multiplier instead of 1.96 protects coverage when $m_d$ is about 50. Take-all strata ($f_h = 1$) get $\lambda_h = 0$, so they add no sampling variance, as intended.
+($m_d$ verified units minus the number of strata with verified units). A $t$ multiplier instead of 1.96 protects coverage when $m_d$ is about 50. Take-all strata ($f_h = 1$) get $\lambda_h = 0$, so they add no phase-1 sampling variance, as intended. Their phase-2 variance (which take-all units are verified) is added by resampling the verified units inside each take-all stratum, with $\lambda_h = \sqrt{1 - m_h/n'_h}$ (v0.4, section 21.1; tests T1 and T2 pass, and T3 is met in part A, `results/v0.4`).
 
 ### 8.8 Productivity
 $\hat P_d = \hat Y_d / \hat A_d$, with $\hat A_d$ = frame area + not-on-list area estimate. Variance by linearisation of a ratio, $\hat V(\hat P) \approx \hat A^{-2}[\hat V(\hat Y) + \hat P^2 \hat V(\hat A) - 2\hat P\,\widehat{Cov}(\hat Y,\hat A)]$, or from the bootstrap.
@@ -535,6 +535,7 @@ A read-only review of `estimate.py`, `variance.py` and `nonresponse.py` by a sec
 - Options for v0.4: (a) keep the bootstrap, and state in 8.7 that the phase-2 term of take-all strata is left out; (b) resample the verified status inside take-all strata ($m_h - 1$ draws among the verified, rescaled), so the term is included. Option (b) needs a test against a hand-computed phase-2 variance. Choose after the deck, on new seeds, and write the choice here before any run.
 - **Decision (2026-11-01): option (b), specified in section 21.1.**
 - Until then, the proposal limits (section 9.6) state that the interval leaves out the phase-2 variance of take-all units.
+- **Closed (2026-11-02).** T1 and T2 pass and T3 is met (part A, `results/v0.4`); sections 8.6 and 8.7 now state the term, and the proposal records the gap and its fix in its honest record (section 9.6 item 6) instead of its limits. T4 is not run.
 
 ---
 

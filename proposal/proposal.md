@@ -3,9 +3,11 @@
 **Challenge:** Scientific Sample Survey for Pond and Tank Aquaculture Production Estimation (Fishery Department, Assam)
 **Applicant:** [NAME] (solo applicant) · **Advisor:** [TO NAME — statistics faculty, if confirmed]
 **Working title:** [TO CHOOSE] — an open, reproducible survey engine for aquaculture production estimates
-**Draft:** 0.2, 2026-11-01. Sections 3 and 9 are written from the simulation results (v0.2 confirmatory, v0.3 follow-up). Section 3 will need updating when the dashboard exists. Text in [brackets] is for the applicant to fill or confirm.
+**Draft:** 0.3, 2026-11-02. Sections 3 and 9 are written from the simulation reports in `results/` (runs v0.2 to v0.5 and the Fay-Herriot run). Text in [brackets] is for the applicant to fill or confirm.
 
 > Drafting notes (delete before submission): follows the 12 components of the Uniform Solution Proposal Requirements (USPR). Portal field limits are not known yet (behind login); each section is written so it can be cut to its first paragraphs. All simulation numbers must stay labelled "simulated". No real Assam data has been used.
+
+**At a glance.** Assam's pond and tank production is now estimated as water area × one assumed productivity, with no margin of error. This proposal replaces that with a scientific sample survey: about 200 ponds per district drawn by an auditable random rule, a short phone diary for every harvest, and enumerators weighing the harvests on a subsample of farms to correct the diaries. The engine turns this into district totals with 95% confidence intervals that anyone can re-run from the published seed. On five simulated districts with known truth (no real data used), the estimate's average error (bias) was at most 0.7% in the base case, and its intervals held the truth in 93.6% to 96.1% of 1,000 repeats; recall alone under-counted by about 27%. Field forms, the engine, an audit log and a dashboard exist as a working prototype on simulated data.
 
 ---
 
@@ -85,7 +87,7 @@ A farmer touches steps 5, 6 and 7 only. Each submission is one short form. The s
 
 ### 3.2 Screens and wireframes
 
-The five field schedules exist as working XLSForms (section 3.3). The wireframes below show the first two as they appear on a phone, and the dashboard layout. The dashboard is a **design sketch, not built yet**.
+The five field schedules exist as working XLSForms (section 3.3). The wireframes below show the first two as they appear on a phone, and the dashboard layout. A first dashboard is built on simulated output (section 3.3); the layout below is the target for the MVP.
 
 **Harvest diary (farmer, phone, English and Assamese).** One submission per harvest event. When the whole harvest has one use ("all sold" or "all used at home"), the kilogram split questions do not appear.
 
@@ -109,7 +111,7 @@ A warning appears as a note when a value looks wrong (for example one harvest ab
 
 **Verification form (enumerator).** The enumerator scans or types the event code, picks "weighed" or "crates", and enters the weight or the crate count and crate weights. The form shows the farmer's stated amount beside the verified amount and the relative difference, and flags a difference above 50%.
 
-**Dashboard (statistician and district officer), planned layout.**
+**Dashboard (statistician and district officer), target layout.**
 
 ```
 +--------------------------------------------------------------------+
@@ -130,17 +132,20 @@ A warning appears as a note when a value looks wrong (for example one harvest ab
 +--------------------------------------------------------------------+
 ```
 
-### 3.3 Prototype maturity (state at 2026-11-01; confirm at submission)
+### 3.3 Prototype maturity (state at 2026-11-02; confirm at submission)
 
 | Component | State | Evidence |
 |---|---|---|
-| Statistical design | Written, version 0.3 | `docs/design.md`; changes are written before each test run |
-| Selection and estimation engine | Working in Python, on simulated data only | 42 automated tests pass |
-| Simulation | Done: confirmatory run (v0.2) and a labelled follow-up (v0.3) | Section 9 |
+| Statistical design | Written, version 0.5 | `docs/design.md`; every change and its pass criteria are written before the run that tests it |
+| Selection and estimation engine | Working in Python, on simulated data only | 140 automated tests pass |
+| Simulation | Recorded runs on six synthetic districts (the first exploratory); 1,000 repeats per scenario in the main runs | Section 9 |
+| Data-quality checks | Coded: duplicates, gaps, seed consistency, ×10 slips, diary vs weighed, yield outliers; flag only, never overwrite | Section 9.4 |
+| Productivity (t/ha) with interval | Coded and tested in simulation | Section 9.2 |
 | Field schedules | Five XLSForms, English and Assamese, pass ODK Validate | Assamese labels are machine-drafted and still need a native-speaker check |
-| Dashboard | Not built | Layout above; will run on simulated output |
-| Seed commitment and hash-chained audit log | Specified in the design (section 13), not coded | Planned for the prototype stage |
-| Fay-Herriot block estimates, rotating panel | Specified, not coded | Planned for the MVP stage |
+| Dashboard | First version built (Streamlit) on simulated output: estimates with intervals, quality tiles, coverage over repeats, run record | Flag queue and district filter not yet connected |
+| Seed commitment and hash-chained audit log | Coded: seed commit and reveal, frame hash, append-only hash-chained log | Unit tests (`tests/test_audit.py`) |
+| Fay-Herriot block estimates | Coded and tested in simulation; experimental | Section 9.5 |
+| Rotating panel and composite estimator | Coded with unit tests; simulation run not yet done | Section 9.7 |
 
 No real Assam data has been used. The prototype is shown on simulated data and will be rebuilt on the department's frame when it is available.
 
@@ -164,9 +169,11 @@ No real Assam data has been used. The prototype is shown on simulated data and w
 - **Strata:** district × type × size class × intensity proxy; a take-all class for the largest farms (≥ 2 ha).
 - **Allocation:** Neyman allocation inside each district, equal precision target across districts.
 - **Selection:** permanent random numbers from HMAC-SHA256(seed, unit ID); rotation of one third per year.
-- **Estimator:** total = (weighted diary total) × (weighed ÷ diary ratio on the verified subsample), plus an area-frame estimate for ponds missing from the list.
-- **Nonresponse:** response-propensity classes, then calibration to the frame's known counts and water area.
-- **Uncertainty:** Rao–Wu rescaled bootstrap re-running the whole pipeline; 95% intervals with a t multiplier.
+- **Estimator:** total = (weighted diary total) × (weighed ÷ diary ratio on the verified subsample), plus an area-frame estimate for ponds missing from the list. The ratio uses only harvests that were both recorded and weighed.
+- **Verification rate:** about 30% of responding farms to start; a mid-year check raises it (up to 80%) when the predicted error is above the precision target.
+- **Nonresponse:** farmers who stop the diary still answer the year-end recall, which stands for all dropouts in their stratum (double sampling); the rest by response-propensity classes, then calibration to the frame's known counts and water area.
+- **Uncertainty:** Rao–Wu rescaled bootstrap re-running the whole pipeline, including which of the largest farms are weighed; 95% intervals with a t multiplier.
+- **Productivity:** production ÷ water area (t/ha), with its own interval.
 - **Sub-district:** Fay-Herriot small-area model for development blocks, shown beside direct estimates (experimental in the pilot).
 - **Over time:** composite estimator using the overlap between years.
 
@@ -181,9 +188,9 @@ No real Assam data has been used. The prototype is shown on simulated data and w
 | Step | Output |
 |---|---|
 | 1. Requirements with the department | Confirmed frame fields, reference year, precision target, pilot districts |
-| 2. Statistical design | Design document (done in draft: strata, allocation, estimators, variance, assumptions) |
-| 3. Simulation proof | Synthetic district with known truth; coverage, bias and stress tests (done in draft; see section 9) |
-| 4. Engine prototype | Selection, estimation, bootstrap, audit log, with automated tests |
+| 2. Statistical design | Design document (done, version 0.5: strata, allocation, estimators, variance, assumptions) |
+| 3. Simulation proof | Synthetic districts with known truth; coverage, bias and stress tests (done for the main design; see section 9) |
+| 4. Engine prototype | Selection, estimation, bootstrap, audit log, with automated tests (done on simulated data) |
 | 5. Field schedules | XLSForms in English and Assamese, validated; field-tested with a few farmers |
 | 6. MVP | Engine + forms + dashboard on the department's real frame for the pilot districts |
 | 7. Testing and refinement | Re-run the simulation on the real frame's size distribution; independent R cross-check; usability fixes from field staff |
@@ -252,13 +259,26 @@ The pilot itself runs over one full reference year (April – March) after M7.
 
 ### 9.1 Method
 
-A synthetic district has 20,000 listed water bodies and 1,600 that are not on the list. Its mean area (about 0.17 ha) and total area are set from published Assam figures; other parameters are assumptions. The parameters are in the open code, each tagged as documented, sourced or assumed. The true production of every water body is known, so the true district total is known (14,439.8 t, simulated). Each test draws 200 water bodies, runs the full survey (non-response, diaries, weighing on a subsample, recall) and produces an estimate with a 95% interval. This is repeated 1,000 times per scenario. Two measures follow:
+A synthetic district has 20,000 listed water bodies and 1,600 that are not on the list. Its mean area (about 0.17 ha) and total area are set from published Assam figures; other parameters are assumptions. The parameters are in the open code, each tagged as documented, sourced or assumed. The true production of every water body is known, so the true district total is known (for example 14,439.8 t in the confirmatory run, simulated). Each test draws 200 water bodies, runs the full survey (non-response, diaries, weighing on a subsample, recall) and produces an estimate with a 95% interval. This is repeated 1,000 times per scenario. Two measures follow:
 - **Bias:** the average error of the estimate, as a share of the truth. Near zero is good.
 - **Coverage:** the share of the 1,000 intervals that contain the truth. A correct 95% interval should land near 95%. The accepted band was fixed in advance at 93% to 97%.
 
 Four estimators are compared on the same samples: area × a single productivity figure (E0, today's method, with a placeholder of 4.89 t/ha), farmer recall only (E1), diary only (E2), and the proposed diary-plus-weighing estimator (E3).
 
+**The rule since the confirmatory run.** Each design change and its pass criteria are written into the design document first. The run then uses a new synthetic district and seeds that were never used before, and nothing is tuned after it. Failures stay in the report. The runs so far:
+
+| Run | Purpose | Seeds (population / master) | Report |
+|---|---|---|---|
+| v0.1 | Exploratory: first test of the design | 20261101 / 2026 | `results/v0.1-exploratory` |
+| v0.2 | **Confirmatory**: fixes from v0.1, fixed in advance | 20261102 / 4417 | `results/v0.2` |
+| v0.3 | Follow-up: calibration fallback (post-confirmation) | 20261103 / 5521 | `results/v0.3` |
+| v0.4 | Take-all variance and productivity; data-quality checks | 20261104 / 6609 | `results/v0.4`, `results/v0.4-plausibility` |
+| v0.4 FH | Fay-Herriot block estimates | 20261105 / 7703 | `results/v0.4-fh` |
+| v0.5 | Fixes for the weak scenarios | 20261107 / 9931 | `results/v0.5` |
+
 ### 9.2 Main result (base case S1)
+
+Confirmatory run (v0.2):
 
 | Estimator | Bias | 95% interval coverage |
 |---|---|---|
@@ -268,6 +288,20 @@ Four estimators are compared on the same samples: area × a single productivity 
 | **E3 Proposed (diary corrected by weighing)** | **+0.68%** | **96.1%** |
 
 Recall alone under-counts by about a quarter, and a diary alone by about an eighth. Their intervals almost never contain the truth, because they are centred on the wrong value. The proposed estimator has a small bias, and its intervals contain the truth in 96.1% of repeats (Monte Carlo standard error 0.6 points). Its relative standard error is 6.95%, below the 7.5% target; the bootstrap standard error is 1.03 times the real spread of the estimates, so the reported uncertainty is about right. (Figure 1: `results/v0.2/coverage_plot.png`, first 100 intervals per scenario; the E0 gap depends on the placeholder productivity and must not be read as an error of the department.)
+
+**The result repeats on new districts.** The same base case on four more synthetic districts, each with new seeds:
+
+| Run (design version) | True total (t) | E3 bias | Coverage | Relative standard error | E1 recall bias |
+|---|---|---|---|---|---|
+| v0.2 (confirmatory) | 14,439.8 | +0.68% | 96.1% | 6.95% | −27.1% |
+| v0.3 | 14,838.5 | +0.09% | 93.6% | 7.00% | −26.8% |
+| v0.4 | 14,935.8 | +0.06% | 94.6% | 7.14% | −27.1% |
+| v0.4, Fay-Herriot district (block effect added) | 13,470.4 | +0.02% | 96.1% | 6.47% | −27.6% |
+| v0.5 (current design) | 14,358.7 | +0.10% | 95.3% | 6.99% | −27.7% |
+
+Every row is inside the 93% to 97% band and below the 7.5% precision target. The current design (v0.5) uses about 70 weighed farms per district instead of 55, because its mid-year check adds verification when the predicted error is high.
+
+**Productivity (t/ha).** The design also estimates productivity, production ÷ water area, with its own interval. Base case: bias +0.04%, coverage 94.7% (v0.4); bias +0.12%, coverage 95.0% (v0.5). It behaves like the total because water area is estimated with little error.
 
 ### 9.3 Stress tests
 
@@ -284,31 +318,52 @@ The first column is the confirmatory v0.2 run. The second is design v0.5 (three 
 
 I report these whether or not they pass. S2 and S5x show where the design needs money and field discipline rather than statistics.
 
-### 9.4 Honest record
+### 9.4 Data-quality checks (flag, never overwrite)
+
+Each harvest record is checked, and a doubtful one goes to a review queue with its original value kept. Tested on simulated harvests with planted errors (v0.4 district, 200 repeats; `results/v0.4-plausibility`):
+
+| Planted error | Share caught | Pass mark |
+|---|---|---|
+| Duplicate harvest | 100% | 90% |
+| Seed stocking inconsistent with harvest | 100% | 80% |
+| Missing harvest (gap) | 100% | 80% |
+| Weight entered ×10 | 73.3% | 70% |
+
+False alarms on clean records were low for each rule (0.02% to 4.9%), except the diary-vs-weighed check: it flagged **8.7% of clean harvests against an 8% limit**, and all rules together 12.9% against 12%. Both limits are **not met** and were not re-tuned. In practice the review queue would hold about one harvest in eight. The ×10 check misses about a quarter of slips, mostly on small harvests, where a tenfold value still looks normal.
+
+### 9.5 Block estimates (Fay-Herriot, experimental)
+
+District samples are too small for direct block estimates (about 18 farms per block). The Fay-Herriot model (a small-area model that blends each block's own noisy estimate with a prediction from block features) was tested on a district with real differences between blocks (v0.4 estimator; `results/v0.4-fh`). Against the direct block estimate it cut the mean squared error to **0.55** (pass mark 0.85), with **95.0%** interval coverage, and it did no harm when blocks do not differ (0.52). All five criteria were met.
+
+The run also found a defect that the criteria do not catch. The step that smooths each block's variance uses the block's own estimate, so a block that comes out low by chance is trusted more. Before the final scaling to the district total, block estimates came out 4.7% low on average (26% with 30 smaller blocks). After it, single blocks were still off by up to 10%. The fix (smoothing without the block's own estimate, plus a per-block bias criterion) is listed for the next version and not yet tested. Block estimates therefore stay **experimental**, shown beside the direct estimates.
+
+### 9.6 Honest record
 
 1. **Exploratory run first.** The first version of the design (v0.1) failed four of its own criteria: bias +2.3%, interval coverage 90.5%, and the standard-error check. The faults were in the non-response step, the variance formula and two design rules.
 2. **Fix, then test on new data.** The fixes were written into the design document before any new run (section 18 of the design). The confirmatory run used a new synthetic district and new seeds, and nothing was tuned on them. Result: all seven criteria met in the base case.
 3. **A later change, and its cost.** The confirmatory run showed that the area-calibration step fails in about 29% of repeats, in small tank strata. Design v0.3 changed that step. On a third district (new seeds, labelled post-confirmation, not confirmatory), the change removed every unmet calibration constraint (35.9% to 0.0% on identical samples) and cut base-case bias from +0.55% to +0.09%. It also **lowered interval coverage**: 93.6% in the base case (inside the band, 0.6 points above its lower edge) and 90.7% in S5 (outside). We report both numbers. The takeaway is that the method is sound but its intervals have little margin when verification is incomplete, so the pilot must track the verified share.
 4. **Which result is confirmatory.** In the exploratory run, the bootstrap interval was adopted as the main interval after the results were seen, so its 96.4% coverage there is post hoc. Only the v0.2 run, with the bootstrap fixed in advance, is confirmatory.
 5. **Fixing the weak scenarios (v0.5).** S4, S5 and S2 were fixed in the design first, with pass criteria, before any run. An independent review on throw-away seeds then found four faults in the first code, among them a stopping-rule bias in the mid-year rule. These were fixed before the confirmation run. On a new district, the S4 and S5 fixes pass, the base case still meets every criterion (coverage 95.3%, bias +0.10%, RSE 6.99%), and S2 misses its precision target (8.3% against 7.5%). The cost is extra weighing: about 70 weighed farms per district instead of 55 in the base case.
+6. **A gap found by review, then closed.** An independent code review found that the interval left out which of the largest (take-all) farms get weighed. The fix was specified with three tests (design section 21.1); all three pass, and base-case coverage with the fix is 94.6% on a new district.
+7. **Checks that fail their own limits.** The diary-vs-weighed check raises more false alarms than its limit allows at full district size (section 9.4), and the block-estimate run found a bias that its criteria missed (section 9.5). Both are reported, not re-tuned.
 
-### 9.5 Reproducibility and software quality
+### 9.7 Reproducibility and software quality
 
-- **Same seed, same frame, same output.** Two runs of the same 30 repeats gave byte-identical files (SHA-256 identical), for both the confirmatory and the follow-up seeds.
+- **Same seed, same frame, same output.** Two runs of the same 30 repeats gave byte-identical files (SHA-256 identical), for both the confirmatory and the follow-up seeds. With the v0.5 changes switched off, the new code reproduces 150 of 150 rows of the earlier run exactly.
 - **Selection does not depend on list order.** Each unit's random number comes from HMAC-SHA256 of the seed and the unit ID, so re-sorting the frame changes nothing (tested).
-- **42 automated tests pass.** They cover selection, allocation, take-all, calibration (including the fallback), a hand-computed ratio and variance, and a property test that weights stay valid.
+- **140 automated tests pass.** They cover selection, allocation, take-all, calibration (including the fallback), hand-computed ratios and variances, the v0.5 fixes, the data-quality checks, Fay-Herriot, the rotating panel and the audit log. Deliberately broken versions of the v0.5 code (7 of 7) are caught by the tests.
+- **Independent review.** Read-only reviews of the estimator code found two faults in v0.3 and four in the first v0.5 code; each was fixed before the run that tested it.
 - **Field forms.** All five XLSForms pass ODK Validate. The Assamese labels are machine-drafted and need a native-speaker check before field use.
-- **Not yet done:** independent cross-check in R (`survey`); the rotating-panel scenario; the productivity estimate; Fay-Herriot block estimates; field testing with farmers.
+- **Not yet done:** the rotating-panel simulation run (code and unit tests exist); a paired check of the take-all variance fix on identical samples; an independent cross-check in R (`survey`); field testing with farmers.
 
-### 9.6 Limits
+### 9.8 Limits
 
 - The synthetic district is a model. Real within-stratum spread may be larger: the simulated coefficient of variation is about 1.6 against 0.7 in the planning table. The sample will be re-sized from year-one data, and the intervals stay valid at any size.
-- Coverage is checked on one synthetic population per run. The v0.3 follow-up shows that a different district moves coverage by one to two points.
-- The interval leaves out one small source of variance: which of the largest (take-all) farms get weighed. An independent code review found this gap. It is recorded in the design document (section 20.2) with two options to close it. The effect is probably small (inference, not tested): the bootstrap standard error matched the real spread within 3% in the base case.
+- Coverage is checked on one synthetic population per run. Five districts gave base-case coverage between 93.6% and 96.1%, so a different district moves coverage by one to two points.
 - The pilot, not the simulation, decides whether farmers keep diaries and whether harvests are announced.
 - The v0.5 fixes rest on stated assumptions: weighing does not follow a farm's diary error; dropouts recall like respondents; about 70% of dropouts answer the year-end recall. The stress tests show the first is critical (bias −4.2% when it fails) and the second is not (−0.1% with a 10% recall shift). The pilot measures all three.
 
-### 9.7 Prior work
+### 9.9 Prior work
 
 FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World Bank harvest-diary studies, WorldFish satellite pond mapping (sources are cited in the design document).
 
@@ -360,7 +415,7 @@ FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World B
 | Harvests on verification farms not announced | Ratio uses only harvests both recorded and weighed (removes the bias in simulation); unverified events counted; unannounced spot checks, because weighing that avoids under-reporting farms still biases the total |
 | Diaries noisier than planned | Mid-year check raises the weighing rate (up to 80% of respondents) when the predicted error is above 7.5%; budget for up to about twice the planned weighing visits |
 | Real variation larger than planned | Sample re-sized from year-one data; intervals stay honest even if wider |
-| Small samples per block | Fay-Herriot estimates shown beside direct ones, marked experimental |
+| Small samples per block | Fay-Herriot estimates shown beside direct ones, marked experimental; in simulation they cut the mean squared block error by about 45%, but single blocks can be off by up to 10% until the variance-smoothing fix is tested |
 | Solo developer | Open code, design document and tests let others maintain it; advisor review |
 
-**Pilot validation (after development).** Three contrasting districts, as the challenge suggests (high-production, medium-intensity, geographically distinct), chosen from the department's data. About 200 farms per district, about 50 of them with weighed harvests, plus about 30 grid cells per district for the coverage check (sizes to be confirmed from the real frame). Over one reference year, compare: the proposed estimate with its interval; the department's current figure; recall versus weighed amounts on the same farms (a direct measure of recall bias); and the measured share of ponds missing from the list. Success criteria are agreed with the department before the pilot starts.
+**Pilot validation (after development).** Three contrasting districts, as the challenge suggests (high-production, medium-intensity, geographically distinct), chosen from the department's data. About 200 farms per district, about 55 to 70 of them with weighed harvests (more if diaries prove noisy), plus about 30 grid cells per district for the coverage check (sizes to be confirmed from the real frame). Over one reference year, compare: the proposed estimate with its interval; the department's current figure; recall versus weighed amounts on the same farms (a direct measure of recall bias); and the measured share of ponds missing from the list. Success criteria are agreed with the department before the pilot starts.
