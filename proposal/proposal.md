@@ -4,7 +4,7 @@
 **Applicant:** Ritik Bhardwaj (solo applicant), B.Tech. Information Technology, NIT Srinagar
 **Title:** Maach Pramaan ("fish proof") — an auditable sample survey for Assam's pond and tank fish production
 **Version:** 1.0, November 2026. This proposal follows the 12 components of the Uniform Solution Proposal Requirements. Sections 3 and 9 are written from the simulation reports (runs v0.2 to v0.5 and the Fay-Herriot run). All results are simulated; no real Assam data has been used.
-**Code, design document and run reports:** [REPO_URL]. Paths such as `results/v0.5` and `docs/design.md` refer to this repository.
+**Code, design document and run reports:** https://github.com/RitikBhardwaj-programmer/MaachPramaan. Paths such as `results/v0.5` and `docs/design.md` refer to this repository.
 
 **At a glance.** Assam's pond and tank production is now estimated as water area × one assumed productivity, with no margin of error. Maach Pramaan replaces that with a scientific sample survey: about 200 ponds per district drawn by an auditable random rule, a short phone diary for every harvest, and enumerators weighing the harvests on a subsample of farms to correct the diaries. The engine turns this into district totals with 95% confidence intervals that anyone can re-run from the published seed. On five simulated districts with known truth (no real data used), the estimate's average error (bias) was at most 0.7% in the base case, and its intervals held the truth in 93.6% to 96.1% of 1,000 repeats; recall alone under-counted by about 27%. Field forms, the engine, an audit log and a dashboard exist as a working prototype on simulated data.
 
