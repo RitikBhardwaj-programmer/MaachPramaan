@@ -3,9 +3,8 @@
 **Challenge:** Scientific Sample Survey for Pond and Tank Aquaculture Production Estimation (Fishery Department, Assam)
 **Applicant:** Ritik Bhardwaj (solo applicant), B.Tech. Information Technology, NIT Srinagar
 **Title:** Maach Pramaan ("fish proof") — an auditable sample survey for Assam's pond and tank fish production
-**Draft:** 0.3, 2026-11-02. Sections 3 and 9 are written from the simulation reports in `results/` (runs v0.2 to v0.5 and the Fay-Herriot run). Text in [brackets] is for the applicant to fill or confirm.
-
-> Drafting notes (delete before submission): follows the 12 components of the Uniform Solution Proposal Requirements (USPR). Portal field limits are not known yet (behind login); each section is written so it can be cut to its first paragraphs. All simulation numbers must stay labelled "simulated". No real Assam data has been used.
+**Version:** 1.0, November 2026. This proposal follows the 12 components of the Uniform Solution Proposal Requirements. Sections 3 and 9 are written from the simulation reports (runs v0.2 to v0.5 and the Fay-Herriot run). All results are simulated; no real Assam data has been used.
+**Code, design document and run reports:** [REPO_URL]. Paths such as `results/v0.5` and `docs/design.md` refer to this repository.
 
 **At a glance.** Assam's pond and tank production is now estimated as water area × one assumed productivity, with no margin of error. Maach Pramaan replaces that with a scientific sample survey: about 200 ponds per district drawn by an auditable random rule, a short phone diary for every harvest, and enumerators weighing the harvests on a subsample of farms to correct the diaries. The engine turns this into district totals with 95% confidence intervals that anyone can re-run from the published seed. On five simulated districts with known truth (no real data used), the estimate's average error (bias) was at most 0.7% in the base case, and its intervals held the truth in 93.6% to 96.1% of 1,000 repeats; recall alone under-counted by about 27%. Field forms, the engine, an audit log and a dashboard exist as a working prototype on simulated data.
 
@@ -132,7 +131,7 @@ A warning appears as a note when a value looks wrong (for example one harvest ab
 +--------------------------------------------------------------------+
 ```
 
-### 3.3 Prototype maturity (state at 2026-11-02; confirm at submission)
+### 3.3 Prototype maturity (state at 2026-11-09)
 
 | Component | State | Evidence |
 |---|---|---|
@@ -242,13 +241,15 @@ The pilot itself runs over one full reference year (April – March) after M7.
 
 | Role | Person | Expertise | Phases |
 |---|---|---|---|
-| Lead developer and survey methods | Ritik Bhardwaj, B.Tech. Information Technology (2024–2028), NIT Srinagar | Python, statistics, data engineering; built the engine and simulation | All |
+| Lead developer and survey methods | Ritik Bhardwaj, B.Tech. Information Technology (2024–2028), NIT Srinagar | Python, statistics, data engineering; built the engine and simulation with AI coding assistants (see below) | All |
 | Field and domain partner | Directorate of Fisheries (as offered in the challenge) | Aquaculture practice, field operations | Requirements, field test, pilot |
 | Possible collaborators | DES Assam, ICAR-CIFRI (as named in the challenge, subject to department arrangements) | Official statistics, inland fisheries methodology | Review, cross-check |
 
 **Indicative manpower.** Development (Nov – May): 1 full-time developer. Pilot (per district, one year): about 2 enumerators and 1 supervisor, 3 enumerators if diaries prove noisy and weighing doubles. Estimate: listing, monthly checks, weighing visits and year-end recall come to about 400 enumerator-days a year, against about 220 working days per enumerator; to be confirmed with department norms.
 
 **Critical specialist skills.** Survey sampling and variance estimation; field-protocol design for weighing; Assamese language review of forms.
+
+**Use of AI tools.** The code, simulation reports, documents and Assamese draft labels were produced with AI assistants: Anthropic Claude Code for building and OpenAI Codex for read-only code review. The applicant set the requirements, took the design decisions and is responsible for the result. No human statistician has reviewed the work yet; review by DES Assam or ICAR-CIFRI is sought for the pilot.
 
 ---
 
@@ -345,8 +346,8 @@ The run also found a defect that the criteria do not catch. The step that smooth
 2. **Fix, then test on new data.** The fixes were written into the design document before any new run (section 18 of the design). The confirmatory run used a new synthetic district and new seeds, and nothing was tuned on them. Result: all seven criteria met in the base case.
 3. **A later change, and its cost.** The confirmatory run showed that the area-calibration step fails in about 29% of repeats, in small tank strata. Design v0.3 changed that step. On a third district (new seeds, labelled post-confirmation, not confirmatory), the change removed every unmet calibration constraint (35.9% to 0.0% on identical samples) and cut base-case bias from +0.55% to +0.09%. It also **lowered interval coverage**: 93.6% in the base case (inside the band, 0.6 points above its lower edge) and 90.7% in S5 (outside). We report both numbers. The takeaway is that the method is sound but its intervals have little margin when verification is incomplete, so the pilot must track the verified share.
 4. **Which result is confirmatory.** In the exploratory run, the bootstrap interval was adopted as the main interval after the results were seen, so its 96.4% coverage there is post hoc. Only the v0.2 run, with the bootstrap fixed in advance, is confirmatory.
-5. **Fixing the weak scenarios (v0.5).** S4, S5 and S2 were fixed in the design first, with pass criteria, before any run. An independent review on throw-away seeds then found four faults in the first code, among them a stopping-rule bias in the mid-year rule. These were fixed before the confirmation run. On a new district, the S4 and S5 fixes pass, the base case still meets every criterion (coverage 95.3%, bias +0.10%, RSE 6.99%), and S2 misses its precision target (8.3% against 7.5%). The cost is extra weighing: about 70 weighed farms per district instead of 55 in the base case.
-6. **A gap found by review, then closed.** An independent code review found that the interval left out which of the largest (take-all) farms get weighed. The fix was specified with three tests (design section 21.1); all three pass, and base-case coverage with the fix is 94.6% on a new district.
+5. **Fixing the weak scenarios (v0.5).** S4, S5 and S2 were fixed in the design first, with pass criteria, before any run. A separate read-only review by an AI tool, on throw-away seeds, then found four faults in the first code, among them a stopping-rule bias in the mid-year rule. These were fixed before the confirmation run. On a new district, the S4 and S5 fixes pass, the base case still meets every criterion (coverage 95.3%, bias +0.10%, RSE 6.99%), and S2 misses its precision target (8.3% against 7.5%). The cost is extra weighing: about 70 weighed farms per district instead of 55 in the base case.
+6. **A gap found by review, then closed.** A separate read-only code review by an AI tool found that the interval left out which of the largest (take-all) farms get weighed. The fix was specified with three tests (design section 21.1); all three pass, and base-case coverage with the fix is 94.6% on a new district.
 7. **Checks that fail their own limits.** The diary-vs-weighed check raises more false alarms than its limit allows at full district size (section 9.4), the block-estimate run found a bias that its criteria missed, and the rotating panel missed its gain and time-in-sample limits (section 9.5). All are reported, not re-tuned.
 
 ### 9.7 Reproducibility and software quality
@@ -354,7 +355,7 @@ The run also found a defect that the criteria do not catch. The step that smooth
 - **Same seed, same frame, same output.** Two runs of the same 30 repeats gave byte-identical files (SHA-256 identical), for both the confirmatory and the follow-up seeds. With the v0.5 changes switched off, the new code reproduces 150 of 150 rows of the earlier run exactly.
 - **Selection does not depend on list order.** Each unit's random number comes from HMAC-SHA256 of the seed and the unit ID, so re-sorting the frame changes nothing (tested).
 - **140 automated tests pass.** They cover selection, allocation, take-all, calibration (including the fallback), hand-computed ratios and variances, the v0.5 fixes, the data-quality checks, Fay-Herriot, the rotating panel and the audit log. Deliberately broken versions of the v0.5 code (7 of 7) are caught by the tests.
-- **Independent review.** Read-only reviews of the estimator code found two faults in v0.3 and four in the first v0.5 code; each was fixed before the run that tested it.
+- **Separate AI review.** Read-only reviews of the estimator code by AI tools found two faults in v0.3 and four in the first v0.5 code; each was fixed before the run that tested it. These reviews do not replace a human statistician's review.
 - **Field forms.** All five XLSForms pass ODK Validate. The Assamese labels are machine-drafted and need a native-speaker check before field use.
 - **Not yet done:** a paired check of the take-all variance fix on identical samples; an independent cross-check in R (`survey`); field testing with farmers.
 
@@ -375,7 +376,7 @@ FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World B
 
 | Area | Approach |
 |---|---|
-| Personal data | Farmer name and phone kept only in the field system; the analysis data uses pseudonymous unit IDs. Collected under informed consent recorded in the listing form. Handled in line with the Digital Personal Data Protection Act, 2023 (purpose limitation, minimal data, retention limits) [confirm department policy]. |
+| Personal data | Farmer name and phone kept only in the field system; the analysis data uses pseudonymous unit IDs. Collected under informed consent recorded in the listing form. Handled in line with the Digital Personal Data Protection Act, 2023 (purpose limitation, minimal data, retention limits). Any added department data policy is to be confirmed at the requirements step (M2). |
 | Access control | Role-based access on the Kobo/ODK server and the dashboard (enumerator, supervisor, district officer, statistician) |
 | Hosting | On a department or State Data Centre server; no third-party analytics |
 | Integrity | Frame hash, seed commitment, hash-chained append-only log; each estimate run records the code version and data hash |
@@ -407,7 +408,7 @@ FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World B
 
 ## 12. Resources, risks & pilot validation
 
-**Cost drivers (indicative).** Development: developer time, a small server. Pilot: enumerator days (driven mainly by verification visits), calibrated scales, phones or tablets, mobile data. Mostly existing department field staff can be used [confirm].
+**Cost drivers (indicative).** Development: developer time, a small server. Pilot: enumerator days (driven mainly by verification visits), calibrated scales, phones or tablets, mobile data. Whether existing department field staff can do this work is not confirmed; it is a question for the requirements step (M2), and if they cannot, enumerator pay is an added cost.
 
 **Key risks and mitigations.**
 | Risk | Mitigation |
@@ -418,6 +419,6 @@ FAO inland-fisheries sampling guidance, USDA NASS list-plus-area frames, World B
 | Diaries noisier than planned | Mid-year check raises the weighing rate (up to 80% of respondents) when the predicted error is above 7.5%; budget for up to about twice the planned weighing visits |
 | Real variation larger than planned | Sample re-sized from year-one data; intervals stay honest even if wider |
 | Small samples per block | Fay-Herriot estimates shown beside direct ones, marked experimental; in simulation they cut the mean squared block error by about 45%, but single blocks can be off by up to 10% until the variance-smoothing fix is tested |
-| Solo developer, no statistical advisor | Open code, design document and tests let others maintain it; each change gets an independent review before the run that tests it; statistical review by DES Assam or ICAR-CIFRI sought for the pilot |
+| Solo developer, no statistical advisor | Open code, design document and tests let others maintain it; main estimator changes get a read-only AI code review before the run that tests them; statistical review by DES Assam or ICAR-CIFRI sought for the pilot |
 
 **Pilot validation (after development).** Three contrasting districts, as the challenge suggests (high-production, medium-intensity, geographically distinct), chosen from the department's data. About 200 farms per district, about 55 to 70 of them with weighed harvests (more if diaries prove noisy), plus about 30 grid cells per district for the coverage check (sizes to be confirmed from the real frame). Over one reference year, compare: the proposed estimate with its interval; the department's current figure; recall versus weighed amounts on the same farms (a direct measure of recall bias); and the measured share of ponds missing from the list. Success criteria are agreed with the department before the pilot starts.
